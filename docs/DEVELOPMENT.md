@@ -83,6 +83,18 @@ src/app/login, /signup 인증 화면
 
 **Phase 2(GitHub 연동 자동 재스캔), Phase 3(rename 매핑)는 아직 미구현.**
 
+### 6. 테마 갤러리 — 프리셋 카드 + 사용자 템플릿 업로드/공유/별점
+
+"미리캔버스처럼 다양한 완성형 디자인을 갤러리에서 고르고, 직접 만든 것도 올릴 수 있게" 해달라는 요청으로 구현. 색상 프리셋 카드(이전 절)와는 별개로, **완성된 HTML 템플릿**을 통째로 갤러리에서 골라 쓰는 기능:
+
+- `templates` 테이블(`workspace_id`(NULL이면 기본 제공), `name`, `html`, `visibility`('private'|'public'), `is_builtin`) + `template_ratings` 테이블(`template_id`, `workspace_id`, `stars`, PK 복합) 추가
+- `lib/builtinTemplates.ts`: 서버 시작 시(`db.ts`의 `open()`) 한 번 실행되는 `ensureBuiltinTemplates()` — 미니멀/포토히어로/카드그리드/브루탈리스트/파스텔 5종의 완성형 디자인을 `is_builtin=true, visibility='public'`으로 시딩. 전부 인라인 스타일만 사용(`<style>` 태그는 sanitize 단계에서 제거되므로)
+- `lib/templates.ts`: `listTemplates(workspaceId)`가 기본/커뮤니티(내가 아닌 남의 공개 템플릿, 평점 높은 순)/내 템플릿 세 그룹으로 분류해 반환. `saveTemplate`, `setTemplateVisibility`, `deleteTemplate`(본인 것만), `rateTemplate`(워크스페이스당 1개, upsert)
+- 마법사 디자인 단계(커스텀 HTML 모드)에 **"템플릿 갤러리"** 버튼(탭: 기본/커뮤니티/내 템플릿, 카드마다 sandboxed iframe 실시간 미리보기 + 별점 + "이 템플릿 쓰기") + **"내 템플릿으로 저장"** 버튼(이름 입력 + 공개 여부 체크박스) 추가
+- **Playwright로 검증**: 워크스페이스 A가 기본 템플릿에 별점(5점) 매기고, 템플릿을 적용한 뒤 "공개"로 저장 → 워크스페이스 B가 가입해서 "커뮤니티" 탭에서 A의 템플릿을 확인(뜸) / "내 템플릿" 탭에서는 안 보임(격리 확인) — 전부 통과
+
+**미구현/후속 과제**: 템플릿 검색·태그, 신고/모더레이션 정책, 평점 부정 방지(현재는 워크스페이스당 1표라 여러 워크스페이스를 만들어 도배하는 것을 막지 못함), 템플릿 미리보기 썸네일 캐싱(지금은 매번 iframe으로 라이브 렌더링).
+
 ## 완전자유 HTML 모드 설계 (Phase 1 구현 시 참고한 원안)
 
 ### 배경

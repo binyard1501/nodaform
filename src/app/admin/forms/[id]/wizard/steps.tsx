@@ -6,6 +6,7 @@ import { scanCustomHtmlAction } from '@/app/actions'
 import { inkFor } from '@/lib/color'
 import { formatDate, formatDateTime, itemLabel, krw, kstIso, refundText, toKstInput } from '@/lib/format'
 import { durationText, isPaid, publishChecks, sortedRefundRules } from '@/lib/rules'
+import { SaveTemplateButton, TemplateGalleryDialog } from './TemplateGallery'
 import {
   FIELD_TYPE_LABEL,
   TEMPLATE_VARS,
@@ -1000,6 +1001,10 @@ export function StepDesign({ s, update, onError }: StepProps) {
             <code>name=&quot;phone&quot;</code> 을 그대로 써 주세요. 저장할 때 &lt;script&gt;와 이벤트 속성은 제거되고, 자바스크립트로 그려지는 항목은
             인식하지 못합니다 — 정적인 HTML만 지원합니다.
           </p>
+          <div className="row">
+            <TemplateGalleryDialog onUse={html => update({ customHtml: { ...s.customHtml, html, source: 'paste' } })} />
+            <SaveTemplateButton html={s.customHtml.html} />
+          </div>
           <div className="field">
             <span className="label">HTML 붙여넣기 또는 파일 올리기</span>
             <input type="file" accept=".html,text/html" onChange={e => uploadHtml(e.target.files?.[0])} aria-label="HTML 파일 올리기" />

@@ -1,6 +1,7 @@
 import { PGlite } from '@electric-sql/pglite'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
+import { ensureBuiltinTemplates } from './builtinTemplates'
 import {
   normalizeCustomHtml,
   normalizeOffer,
@@ -115,6 +116,24 @@ create index if not exists forms_workspace on forms(workspace_id);
 create index if not exists sessions_expires on sessions(expires_at);
 alter table forms add column if not exists mode text not null default 'structured';
 alter table forms add column if not exists custom_html jsonb not null default '{"source":"paste","html":"","lastScannedAt":null}'::jsonb;
+create table if not exists templates (
+  id text primary key,
+  workspace_id text references workspaces(id) on delete cascade,
+  name text not null,
+  html text not null,
+  visibility text not null default 'private',
+  is_builtin boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create table if not exists template_ratings (
+  template_id text not null references templates(id) on delete cascade,
+  workspace_id text not null references workspaces(id) on delete cascade,
+  stars int not null,
+  created_at timestamptz not null default now(),
+  primary key (template_id, workspace_id)
+);
+create index if not exists templates_visibility on templates(visibility);
+create index if not exists templates_workspace on templates(workspace_id);
 `
 
 const g = globalThis as unknown as { __nodaDb?: Promise<PGlite> }
@@ -124,6 +143,7 @@ async function open() {
   mkdirSync(dir, { recursive: true })
   const db = new PGlite(dir)
   await db.exec(SCHEMA)
+  await ensureBuiltinTemplates(db)
   return db
 }
 

@@ -6,6 +6,7 @@ import * as auth from '@/lib/auth'
 import * as engine from '@/lib/engine'
 import { mergeScannedFields, scanCustomHtmlFields } from '@/lib/htmlScan'
 import { sanitizeFormHtml } from '@/lib/sanitizeHtml'
+import * as templates from '@/lib/templates'
 import type { FieldDef, Method } from '@/lib/types'
 
 export type ActionResult = { error?: string; message?: string }
@@ -90,6 +91,47 @@ export async function scanCustomHtmlAction(html: string, existingFields: FieldDe
   } catch (e) {
     return fail(e)
   }
+}
+
+/* ---------- template gallery ---------- */
+
+export type GalleryResult = ActionResult & { gallery?: templates.TemplateGallery }
+
+export async function listTemplatesAction(): Promise<GalleryResult> {
+  try {
+    const workspaceId = await auth.requireWorkspaceId()
+    return { gallery: await templates.listTemplates(workspaceId) }
+  } catch (e) {
+    return fail(e)
+  }
+}
+
+export type UseTemplateResult = ActionResult & { html?: string }
+
+export async function pickTemplateAction(templateId: string): Promise<UseTemplateResult> {
+  try {
+    const workspaceId = await auth.requireWorkspaceId()
+    const t = await templates.getTemplate(workspaceId, templateId)
+    return { html: t.html }
+  } catch (e) {
+    return fail(e)
+  }
+}
+
+export async function saveTemplateAction(name: string, html: string, visibility: templates.TemplateVisibility): Promise<ActionResult> {
+  return run(async () => templates.saveTemplate(await auth.requireWorkspaceId(), { name, html, visibility }))
+}
+
+export async function setTemplateVisibilityAction(templateId: string, visibility: templates.TemplateVisibility) {
+  return run(async () => templates.setTemplateVisibility(await auth.requireWorkspaceId(), templateId, visibility))
+}
+
+export async function deleteTemplateAction(templateId: string) {
+  return run(async () => templates.deleteTemplate(await auth.requireWorkspaceId(), templateId))
+}
+
+export async function rateTemplateAction(templateId: string, stars: number) {
+  return run(async () => templates.rateTemplate(await auth.requireWorkspaceId(), templateId, stars))
 }
 
 export async function publishAction(formId: string): Promise<ActionResult> {
