@@ -974,7 +974,7 @@ export function StepDesign({ s, update, onError }: StepProps) {
   return (
     <>
       <Title title="신청 화면 디자인">
-        브랜드 색, 로고, 커버 이미지를 넣으면 신청 화면과 신청 내역 화면에 모두 적용됩니다. 입력 칸의 위치와 순서는 노다가 정해 두어서, 디자인을 바꿔도 신청서가 깨지지 않습니다.
+        브랜드 색, 로고, 커버 이미지를 넣으면 신청 화면과 신청 내역 화면에 모두 적용됩니다. 입력 칸의 위치와 순서는 NODA가 정해 두어서, 디자인을 바꿔도 신청서가 깨지지 않습니다.
       </Title>
 
       <div className="field">
@@ -982,7 +982,7 @@ export function StepDesign({ s, update, onError }: StepProps) {
         <div className="stack" style={{ gap: 8 }} role="radiogroup" aria-label="화면 방식">
           <label className="check">
             <input type="radio" name="designMode" checked={s.mode !== 'custom_html'} onChange={() => setMode('structured')} />
-            <span>고정 디자인 · 노다가 배치를 정하고, 색·로고·커버만 바꿉니다</span>
+            <span>고정 디자인 · NODA가 배치를 정하고, 색·로고·커버만 바꿉니다</span>
           </label>
           <label className="check">
             <input type="radio" name="designMode" checked={s.mode === 'custom_html'} onChange={() => setMode('custom_html')} disabled={!canCustomHtml} />

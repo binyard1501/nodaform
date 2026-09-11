@@ -2,12 +2,15 @@
   --ground: #f3f6f4;
   --surface: #ffffff;
   --sunk: #eaefec;
-  --ink: #15201c;
+  --ink: #18211f;
   --muted: #586862;
   --faint: #8a9892;
   --rule: #d3dcd8;
-  --accent: #0e6b5b;
-  --accent-soft: #dceee8;
+  /* NODA.'s own point color: deliberately low saturation so it reads as chrome around the
+     operator's content, never competing with the brand color a customer picks for their form
+     (that one arrives as --brand and overrides --accent inside .pub-theme). */
+  --accent: #3f6a5e;
+  --accent-soft: #e5ece9;
   --on-accent: #ffffff;
   --warn: #9a6212;
   --warn-soft: #f6ebd6;
@@ -33,9 +36,9 @@
     --muted: #93a49e;
     --faint: #6b7b75;
     --rule: #2b3833;
-    --accent: #56c4a9;
-    --accent-soft: #17362f;
-    --on-accent: #08201a;
+    --accent: #88b2a4;
+    --accent-soft: #1e2e2a;
+    --on-accent: #10201c;
     --warn: #e0ae5c;
     --warn-soft: #352914;
     --bad: #ee8a76;
@@ -56,9 +59,9 @@
   --muted: #93a49e;
   --faint: #6b7b75;
   --rule: #2b3833;
-  --accent: #56c4a9;
-  --accent-soft: #17362f;
-  --on-accent: #08201a;
+  --accent: #88b2a4;
+  --accent-soft: #1e2e2a;
+  --on-accent: #10201c;
   --warn: #e0ae5c;
   --warn-soft: #352914;
   --bad: #ee8a76;
@@ -105,7 +108,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
   padding: 12px 28px; border-bottom: 1px solid var(--rule); background: var(--surface);
 }
-.brand { font-family: var(--serif); font-weight: 700; font-size: 20px; color: var(--ink); text-decoration: none; letter-spacing: -0.02em; }
+/* Uppercase Latin wordmark wants tracking opened up, unlike the tightened Korean mark it replaced. */
+.brand { font-family: var(--serif); font-weight: 700; font-size: 19px; color: var(--ink); text-decoration: none; letter-spacing: 0.05em; }
 .brand span { color: var(--accent); }
 .topbar nav { display: flex; gap: 16px; }
 .topbar nav a { color: var(--ink); text-decoration: none; font-weight: 500; }

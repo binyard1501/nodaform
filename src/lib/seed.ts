@@ -256,13 +256,13 @@ async function seedBriefing(q: Q, workspaceId: string, slug: string) {
   offer.close = { mode: 'none', minutes: 60, at: null }
   const form = await insertForm(q, workspaceId, {
     slug,
-    title: '노다 온라인 설명회 사전 등록 (예시)',
+    title: 'NODA. 온라인 설명회 사전 등록 (예시)',
     description: '무료 · 누구나 · 접속 링크는 전날 문자로 보내드립니다',
     offer,
     questions: {
       fields: [f('org', 'text', '소속', false), f('question', 'textarea', '미리 궁금한 점', false, [], '설명회에서 먼저 답해 드립니다')],
       companions: false,
-      marketing: { enabled: true, text: '노다 소식과 다음 설명회 일정을 문자로 받겠습니다 (선택)' },
+      marketing: { enabled: true, text: 'NODA. 소식과 다음 설명회 일정을 문자로 받겠습니다 (선택)' },
     },
     theme: defaultTheme(),
   })

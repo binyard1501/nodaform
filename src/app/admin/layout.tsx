@@ -8,7 +8,7 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
     <>
       <header className="topbar">
         <Link href="/admin" className="brand">
-          노다<span>.</span>
+          NODA<span>.</span>
         </Link>
         <nav>
           <Link href="/admin">신청 폼</Link>

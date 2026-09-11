@@ -12,7 +12,7 @@ export default async function LoginPage() {
       <div className="panel auth-card">
         <div className="stack" style={{ gap: 4 }}>
           <span className="brand" style={{ fontSize: 22 }}>
-            노다<span>.</span>
+            NODA<span>.</span>
           </span>
           <h1>로그인</h1>
         </div>

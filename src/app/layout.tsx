@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: '노다 · 신청과 정원',
-  description: '신청·정원·대기자를 한 곳에서 관리하는 노다 프로토타입',
+  title: 'NODA. · 신청과 정원',
+  description: '신청·정원·대기자를 한 곳에서 관리하는 NODA. 프로토타입',
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

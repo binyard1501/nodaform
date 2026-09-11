@@ -12,7 +12,7 @@ export default async function SignUpPage() {
       <div className="panel auth-card">
         <div className="stack" style={{ gap: 4 }}>
           <span className="brand" style={{ fontSize: 22 }}>
-            노다<span>.</span>
+            NODA<span>.</span>
           </span>
           <h1>워크스페이스 만들기</h1>
           <p className="muted small">가입하면 둘러볼 수 있는 예시 폼이 몇 개 채워집니다.</p>
