@@ -12,6 +12,7 @@ import {
   shiftClockAction,
 } from '@/app/actions'
 import { ActionButton } from '@/components/ActionButton'
+import { requireWorkspace } from '@/lib/auth'
 import { getDashboard } from '@/lib/engine'
 import { formatDate, formatDateTime, itemLabel, krw, kstIso, relative, toKstInput } from '@/lib/format'
 import { CHANNEL_LABEL, METHOD_LABEL, STATUS_LABEL, TRIGGER_LABEL, type Application, type AppStatus, type FormRecord, type ItemStats } from '@/lib/types'
@@ -62,7 +63,8 @@ function matches(form: FormRecord, a: Application, q: string) {
 export default async function Dashboard(props: PageProps<'/admin/forms/[id]'>) {
   const { id } = await props.params
   const { status: filterKey = 'all', q = '', day: dayParam = '' } = (await props.searchParams) as { status?: string; q?: string; day?: string }
-  const data = await getDashboard(id)
+  const { workspaceId } = await requireWorkspace()
+  const data = await getDashboard(workspaceId, id)
   if (!data) notFound()
   const { form, stats, applications, messages, now, offsetMs } = data
 

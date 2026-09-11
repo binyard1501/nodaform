@@ -60,11 +60,15 @@ const SEMINAR_THEME: Theme = { color: '#1f3a8a', logo: null, cover: null }
 
 let counter = 0
 
-async function insertForm(q: Q, f: { slug: string; title: string; description: string; offer: Offer; questions: Questions; theme: Theme }) {
+async function insertForm(
+  q: Q,
+  workspaceId: string,
+  f: { slug: string; title: string; description: string; offer: Offer; questions: Questions; theme: Theme },
+) {
   const { rows } = await q.query<FormRow>(
-    `insert into forms (id, slug, title, description, status, offer, questions, theme)
-     values ($1, $2, $3, $4, 'published', $5::jsonb, $6::jsonb, $7::jsonb) returning *`,
-    [randomUUID(), f.slug, f.title, f.description, JSON.stringify(f.offer), JSON.stringify(f.questions), JSON.stringify(f.theme)],
+    `insert into forms (id, workspace_id, slug, title, description, status, offer, questions, theme)
+     values ($1, $2, $3, $4, $5, 'published', $6::jsonb, $7::jsonb, $8::jsonb) returning *`,
+    [randomUUID(), workspaceId, f.slug, f.title, f.description, JSON.stringify(f.offer), JSON.stringify(f.questions), JSON.stringify(f.theme)],
   )
   return mapForm(rows[0])
 }
@@ -164,11 +168,11 @@ const briefingExtra: Extra = n => ({
   marketing: n % 3 !== 0,
 })
 
-async function seedPopup(q: Q) {
+async function seedPopup(q: Q, workspaceId: string, slug: string) {
   const offer = defaultOffer()
   offer.deposit = { enabled: true, bank: '신한은행', account: '110-000-000000', holder: '노다 팝업(예시)', deadlineHours: 24 }
-  const form = await insertForm(q, {
-    slug: 'seongsu-popup',
+  const form = await insertForm(q, workspaceId, {
+    slug,
     title: '성수 여름 끝 팝업 (예시)',
     description: '30분 단위 입장 예약 · 1인 5,000원, 엽서 굿즈 교환권 포함',
     offer,
@@ -208,7 +212,7 @@ async function seedPopup(q: Q) {
   )
 }
 
-async function seedSeminar(q: Q) {
+async function seedSeminar(q: Q, workspaceId: string, slug: string) {
   const offer = defaultOffer()
   const date = kstDate(20)
   offer.structure = 'single'
@@ -217,8 +221,8 @@ async function seedSeminar(q: Q) {
   offer.close = { mode: 'at', minutes: 60, at: new Date(new Date(kstIso(date, '18:00')).getTime() - 2 * 86_400_000).toISOString() }
   offer.deposit = { enabled: true, bank: '국민은행', account: '000000-00-000000', holder: '(사)노다협회(예시)', deadlineHours: 72 }
   offer.onsite = true
-  const form = await insertForm(q, {
-    slug: 'member-seminar',
+  const form = await insertForm(q, workspaceId, {
+    slug,
     title: '2026 하반기 회원사 세미나 (예시)',
     description: '회원사 30,000원 · 비회원 50,000원 · 선착순',
     offer,
@@ -242,7 +246,7 @@ async function seedSeminar(q: Q) {
   )
 }
 
-async function seedBriefing(q: Q) {
+async function seedBriefing(q: Q, workspaceId: string, slug: string) {
   const offer = defaultOffer()
   const date = kstDate(10)
   offer.structure = 'simple'
@@ -250,8 +254,8 @@ async function seedBriefing(q: Q) {
   offer.party = { mode: 'solo', max: 1 }
   offer.overflow = 'close'
   offer.close = { mode: 'none', minutes: 60, at: null }
-  const form = await insertForm(q, {
-    slug: 'noda-briefing',
+  const form = await insertForm(q, workspaceId, {
+    slug,
     title: '노다 온라인 설명회 사전 등록 (예시)',
     description: '무료 · 누구나 · 접속 링크는 전날 문자로 보내드립니다',
     offer,
@@ -281,7 +285,7 @@ const potteryExtra: Extra = (n, party) => ({
   marketing: n % 2 === 0,
 })
 
-async function seedPottery(q: Q) {
+async function seedPottery(q: Q, workspaceId: string, slug: string) {
   const offer = defaultOffer()
   offer.party = { mode: 'group', max: 2 }
   offer.claimHours = 3
@@ -293,8 +297,8 @@ async function seedPottery(q: Q) {
     { daysBefore: 1, percent: 50 },
     { daysBefore: 0, percent: 0 },
   ]
-  const form = await insertForm(q, {
-    slug: 'pottery-class',
+  const form = await insertForm(q, workspaceId, {
+    slug,
     title: '가을 도예 원데이 클래스 (예시)',
     description: '2주간 화~토 · 하루 네 타임 · 1인 45,000원, 재료비 포함',
     offer,
@@ -334,20 +338,28 @@ async function seedPottery(q: Q) {
   )
 }
 
-const EXAMPLES: { slug: string; seed: (q: Q) => Promise<void>; questions?: Questions; theme?: Theme }[] = [
-  { slug: 'member-seminar', seed: seedSeminar, questions: SEMINAR_QUESTIONS, theme: SEMINAR_THEME },
-  { slug: 'seongsu-popup', seed: seedPopup, questions: POPUP_QUESTIONS, theme: POPUP_THEME },
-  { slug: 'noda-briefing', seed: seedBriefing },
-  { slug: 'pottery-class', seed: seedPottery },
+const EXAMPLES: { baseSlug: string; seed: (q: Q, workspaceId: string, slug: string) => Promise<void>; questions?: Questions; theme?: Theme }[] = [
+  { baseSlug: 'member-seminar', seed: seedSeminar, questions: SEMINAR_QUESTIONS, theme: SEMINAR_THEME },
+  { baseSlug: 'seongsu-popup', seed: seedPopup, questions: POPUP_QUESTIONS, theme: POPUP_THEME },
+  { baseSlug: 'noda-briefing', seed: seedBriefing },
+  { baseSlug: 'pottery-class', seed: seedPottery },
 ]
 
-// Adds missing example forms, and gives examples created before questions/theme existed their example settings.
-export async function ensureExamples(d: PGlite) {
+// Public form URLs (/f/[slug]) have no workspace segment, so slugs must stay globally unique —
+// each workspace's copy of an example gets its own short suffix.
+function exampleSlug(workspaceId: string, baseSlug: string) {
+  return `${baseSlug}-${workspaceId.slice(0, 6)}`
+}
+
+// Seeds a new workspace with the example forms, and (for the legacy no-auth prototype data
+// that predates workspaces) gives already-seeded examples their settings if still missing.
+export async function ensureExamples(d: PGlite, workspaceId: string) {
   await d.transaction(async tx => {
     for (const ex of EXAMPLES) {
-      const { rows } = await tx.query<{ id: string; questions: object }>(`select id, questions from forms where slug = $1`, [ex.slug])
+      const slug = exampleSlug(workspaceId, ex.baseSlug)
+      const { rows } = await tx.query<{ id: string; questions: object }>(`select id, questions from forms where slug = $1`, [slug])
       if (!rows[0]) {
-        await ex.seed(tx)
+        await ex.seed(tx, workspaceId, slug)
       } else if (ex.questions && Object.keys(rows[0].questions ?? {}).length === 0) {
         await tx.query(
           `update forms set questions = $2::jsonb, theme = $3::jsonb, offer = offer || '{"limitPerPerson": 1}'::jsonb where id = $1`,

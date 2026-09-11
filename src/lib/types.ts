@@ -55,6 +55,7 @@ export type Item = {
 
 export type FormRecord = {
   id: string
+  workspaceId: string
   slug: string
   title: string
   description: string

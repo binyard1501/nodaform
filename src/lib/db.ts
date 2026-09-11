@@ -24,6 +24,29 @@ export type Q = { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[]
 
 const SCHEMA = `
 create table if not exists settings (key text primary key, value text not null);
+create table if not exists workspaces (
+  id text primary key,
+  name text not null,
+  created_at timestamptz not null default now()
+);
+create table if not exists users (
+  id text primary key,
+  workspace_id text not null references workspaces(id) on delete cascade,
+  email text unique not null,
+  password_hash text not null,
+  created_at timestamptz not null default now()
+);
+create table if not exists sessions (
+  token text primary key,
+  user_id text not null references users(id) on delete cascade,
+  expires_at timestamptz not null
+);
+create table if not exists workspace_settings (
+  workspace_id text not null references workspaces(id) on delete cascade,
+  key text not null,
+  value text not null,
+  primary key (workspace_id, key)
+);
 create table if not exists forms (
   id text primary key,
   slug text unique not null,
@@ -84,6 +107,9 @@ alter table applications add column if not exists source text not null default '
 alter table applications add column if not exists checked_in_at timestamptz;
 alter table applications add column if not exists refund_due int;
 create index if not exists applications_phone on applications(phone);
+alter table forms add column if not exists workspace_id text references workspaces(id);
+create index if not exists forms_workspace on forms(workspace_id);
+create index if not exists sessions_expires on sessions(expires_at);
 `
 
 const g = globalThis as unknown as { __nodaDb?: Promise<PGlite> }
@@ -101,8 +127,8 @@ export function rawDb() {
   return (g.__nodaDb ??= open())
 }
 
-export async function getClock(q: Q) {
-  const { rows } = await q.query<{ value: string }>(`select value from settings where key = 'clock_offset_ms'`)
+export async function getClock(q: Q, workspaceId: string) {
+  const { rows } = await q.query<{ value: string }>(`select value from workspace_settings where workspace_id = $1 and key = 'clock_offset_ms'`, [workspaceId])
   const offsetMs = rows[0] ? Number(rows[0].value) : 0
   return { now: new Date(Date.now() + offsetMs), offsetMs }
 }
@@ -111,6 +137,7 @@ const iso = (d: Date | string | null) => (d == null ? null : new Date(d).toISOSt
 
 export type FormRow = {
   id: string
+  workspace_id: string
   slug: string
   title: string
   description: string
@@ -163,6 +190,7 @@ export type MessageRow = {
 
 export const mapForm = (r: FormRow): FormRecord => ({
   id: r.id,
+  workspaceId: r.workspace_id,
   slug: r.slug,
   title: r.title,
   description: r.description,

@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { checkInAction } from '@/app/actions'
 import { ActionButton } from '@/components/ActionButton'
+import { requireWorkspace } from '@/lib/auth'
 import { getCheckinApp } from '@/lib/engine'
 import { formatDateTime, itemLabel } from '@/lib/format'
 import { STATUS_LABEL } from '@/lib/types'
@@ -10,7 +11,8 @@ export const dynamic = 'force-dynamic'
 
 export default async function ScanResult(props: PageProps<'/admin/checkin/[appId]'>) {
   const { appId } = await props.params
-  const data = await getCheckinApp(appId)
+  const { workspaceId } = await requireWorkspace()
+  const data = await getCheckinApp(workspaceId, appId)
   if (!data) notFound()
   const { form, app, item } = data
 

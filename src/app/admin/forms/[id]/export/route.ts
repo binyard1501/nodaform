@@ -1,3 +1,4 @@
+import { requireWorkspace } from '@/lib/auth'
 import { csvResponse } from '@/lib/csv'
 import { exportRows } from '@/lib/engine'
 import { formatDateTime, itemLabel } from '@/lib/format'
@@ -7,7 +8,8 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const data = await exportRows(id)
+  const { workspaceId } = await requireWorkspace()
+  const data = await exportRows(workspaceId, id)
   if (!data) return new Response('폼을 찾을 수 없습니다.', { status: 404 })
   const { form, items, applications } = data
   const byId = new Map(items.map(i => [i.id, i]))

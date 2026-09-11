@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { requireWorkspace } from '@/lib/auth'
 import { listCustomers } from '@/lib/engine'
 import { formatDateTime } from '@/lib/format'
 
@@ -8,7 +9,8 @@ const phone = (p: string) => p.replace(/^(\d{3})(\d{3,4})(\d{4})$/, '$1-$2-$3')
 
 export default async function Customers(props: PageProps<'/admin/customers'>) {
   const { marketing = '', q = '' } = (await props.searchParams) as { marketing?: string; q?: string }
-  const all = await listCustomers()
+  const { workspaceId } = await requireWorkspace()
+  const all = await listCustomers(workspaceId)
   const consented = all.filter(c => c.marketing).length
   const d = q.replace(/\D/g, '')
   const rows = all.filter(c => (marketing !== '1' || c.marketing) && (!q || c.name.includes(q) || (d.length >= 3 && c.phone.includes(d))))

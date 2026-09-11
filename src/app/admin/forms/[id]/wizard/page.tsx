@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { requireWorkspace } from '@/lib/auth'
 import { getWizard } from '@/lib/engine'
 import { Wizard } from './Wizard'
 
@@ -7,7 +8,8 @@ export const dynamic = 'force-dynamic'
 
 export default async function WizardPage(props: PageProps<'/admin/forms/[id]/wizard'>) {
   const { id } = await props.params
-  const data = await getWizard(id)
+  const { workspaceId } = await requireWorkspace()
+  const data = await getWizard(workspaceId, id)
   if (!data) notFound()
 
   return (

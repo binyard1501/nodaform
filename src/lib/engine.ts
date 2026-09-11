@@ -3,7 +3,6 @@ import { getClock, mapApp, mapForm, mapItem, mapMessage, rawDb, type AppRow, typ
 import { formatDateTime, itemLabel } from './format'
 import { sendMessage } from './messaging'
 import { applicantCanChange, fits, isClosed, isOpen, priceOf, publishChecks, refundFor, remainingOf } from './rules'
-import { ensureExamples } from './seed'
 import {
   defaultOffer,
   defaultQuestions,
@@ -22,12 +21,8 @@ import {
 
 export class UserError extends Error {}
 
-const g = globalThis as unknown as { __nodaReady?: Promise<void> }
-
 async function db() {
-  const d = await rawDb()
-  await (g.__nodaReady ??= ensureExamples(d))
-  return d
+  return rawDb()
 }
 
 // Seats count while an application is confirmed, awaiting deposit, or holding a waitlist offer.
@@ -152,20 +147,25 @@ async function statsFor(q: Q, form: FormRecord, items: Item[], now: Date): Promi
   })
 }
 
-async function formOfApp(q: Q, appId: string) {
+// workspaceId is passed only for operator actions: it scopes the application to the caller's
+// workspace so one operator can't act on (or even detect) another workspace's applications.
+async function formOfApp(q: Q, appId: string, workspaceId?: string) {
   const { rows } = await q.query<{ form_id: string }>(`select form_id from applications where id = $1`, [appId])
   if (!rows[0]) throw new UserError('신청 내역을 찾을 수 없습니다.')
-  return (await loadForm(q, rows[0].form_id))!
+  const form = await loadForm(q, rows[0].form_id)
+  if (!form || (workspaceId && form.workspaceId !== workspaceId)) throw new UserError('신청 내역을 찾을 수 없습니다.')
+  return form
 }
 
 async function withApp<T>(
   appId: string,
   fn: (tx: Q, ctx: { form: FormRecord; items: Item[]; item: Item; app: Application; now: Date }) => Promise<T>,
+  workspaceId?: string,
 ) {
   const d = await db()
   return d.transaction(async tx => {
-    const { now } = await getClock(tx)
-    const form = await formOfApp(tx, appId)
+    const form = await formOfApp(tx, appId, workspaceId)
+    const { now } = await getClock(tx, form.workspaceId)
     const items = await reconcile(tx, form, now)
     const app = (await loadApp(tx, appId))!
     return fn(tx, { form, items, item: items.find(i => i.id === app.itemId)!, app, now })
@@ -197,7 +197,14 @@ function validateAnswers(questions: Questions, raw: Record<string, unknown>): An
 
 /* ---------- reads ---------- */
 
-export async function listForms() {
+// A form must belong to the caller's workspace before any operator function reads or writes it.
+async function loadOwnForm(q: Q, workspaceId: string, formId: string) {
+  const form = await loadForm(q, formId)
+  if (!form || form.workspaceId !== workspaceId) return null
+  return form
+}
+
+export async function listForms(workspaceId: string) {
   const d = await db()
   const { rows } = await d.query<FormRow & { capacity: number; unlimited: boolean; confirmed: number; waiting: number; items: number }>(
     `select f.*,
@@ -206,17 +213,18 @@ export async function listForms() {
        (select count(*)::int from items i where i.form_id = f.id) as items,
        (select coalesce(sum(party), 0)::int from applications a where a.form_id = f.id and a.status = 'confirmed') as confirmed,
        (select count(*)::int from applications a where a.form_id = f.id and a.status = 'waitlisted') as waiting
-     from forms f order by f.created_at desc, f.title`,
+     from forms f where f.workspace_id = $1 order by f.created_at desc, f.title`,
+    [workspaceId],
   )
   return rows.map(r => ({ ...mapForm(r), capacity: r.capacity, unlimited: !!r.unlimited, confirmed: r.confirmed, waiting: r.waiting, items: r.items }))
 }
 
-export async function getDashboard(formId: string) {
+export async function getDashboard(workspaceId: string, formId: string) {
   const d = await db()
   return d.transaction(async tx => {
-    const { now, offsetMs } = await getClock(tx)
-    const form = await loadForm(tx, formId)
+    const form = await loadOwnForm(tx, workspaceId, formId)
     if (!form) return null
+    const { now, offsetMs } = await getClock(tx, workspaceId)
     const items = await reconcile(tx, form, now)
     const stats = await statsFor(tx, form, items, now)
     const { rows: apps } = await tx.query<AppRow>(`select * from applications where form_id = $1 order by seq desc`, [formId])
@@ -228,9 +236,9 @@ export async function getDashboard(formId: string) {
 export async function getPublic(slug: string) {
   const d = await db()
   return d.transaction(async tx => {
-    const { now } = await getClock(tx)
     const form = await loadFormBySlug(tx, slug)
     if (!form) return null
+    const { now } = await getClock(tx, form.workspaceId)
     const items = await reconcile(tx, form, now)
     return { form, stats: await statsFor(tx, form, items, now), now: now.toISOString() }
   })
@@ -239,9 +247,9 @@ export async function getPublic(slug: string) {
 export async function getApplicationView(slug: string, appId: string) {
   const d = await db()
   return d.transaction(async tx => {
-    const { now } = await getClock(tx)
     const form = await loadFormBySlug(tx, slug)
     if (!form) return null
+    const { now } = await getClock(tx, form.workspaceId)
     const items = await reconcile(tx, form, now)
     const app = await loadApp(tx, appId)
     if (!app || !items.some(i => i.id === app.itemId)) return null
@@ -272,34 +280,39 @@ export async function getApplicationView(slug: string, appId: string) {
   })
 }
 
-export async function getWizard(formId: string) {
+export async function getWizard(workspaceId: string, formId: string) {
   const d = await db()
-  const form = await loadForm(d, formId)
+  const form = await loadOwnForm(d, workspaceId, formId)
   if (!form) return null
   const items = await loadItems(d, formId)
   const { rows } = await d.query<{ n: number }>(`select count(*)::int as n from applications where form_id = $1`, [formId])
-  const { now } = await getClock(d)
+  const { now } = await getClock(d, workspaceId)
   const defaultDate = new Date(now.getTime() + 14 * 86_400_000 + 9 * 3600_000).toISOString().slice(0, 10)
   return { form, items, hasApplications: rows[0].n > 0, defaultDate }
 }
 
-export async function getCheckin(formId: string) {
+export async function getCheckin(workspaceId: string, formId: string) {
   const d = await db()
   return d.transaction(async tx => {
-    const { now } = await getClock(tx)
-    const form = await loadForm(tx, formId)
+    const form = await loadOwnForm(tx, workspaceId, formId)
     if (!form) return null
+    const { now } = await getClock(tx, workspaceId)
     const items = await reconcile(tx, form, now)
     const { rows } = await tx.query<AppRow>(`select * from applications where form_id = $1 and status = 'confirmed' order by name`, [formId])
     return { form, stats: await statsFor(tx, form, items, now), applications: rows.map(mapApp), now: now.toISOString() }
   })
 }
 
-export async function getCheckinApp(appId: string) {
+export async function getCheckinApp(workspaceId: string, appId: string) {
   const d = await db()
   const app = await loadApp(d, appId)
   if (!app) return null
-  const form = await formOfApp(d, appId)
+  let form: FormRecord
+  try {
+    form = await formOfApp(d, appId, workspaceId)
+  } catch {
+    return null
+  }
   const items = await loadItems(d, form.id)
   return { form, app, item: items.find(i => i.id === app.itemId)! }
 }
@@ -317,9 +330,9 @@ export async function lookupApplications(slug: string, name: string, phone: stri
   return rows.map(mapApp).map(a => ({ id: a.id, status: a.status, party: a.party, item: itemLabel(items.find(i => i.id === a.itemId)!) }))
 }
 
-export async function exportRows(formId: string) {
+export async function exportRows(workspaceId: string, formId: string) {
   const d = await db()
-  const form = await loadForm(d, formId)
+  const form = await loadOwnForm(d, workspaceId, formId)
   if (!form) return null
   const items = await loadItems(d, formId)
   const { rows } = await d.query<AppRow>(`select * from applications where form_id = $1 order by seq`, [formId])
@@ -335,11 +348,12 @@ export type Customer = {
   lastAt: string
 }
 
-export async function listCustomers(): Promise<Customer[]> {
+export async function listCustomers(workspaceId: string): Promise<Customer[]> {
   const d = await db()
   const { rows } = await d.query<{ phone: string; name: string; marketing: boolean; created_at: Date; title: string; status: string }>(
     `select a.phone, a.name, a.marketing, a.created_at, f.title, a.status
-     from applications a join forms f on f.id = a.form_id order by a.created_at desc`,
+     from applications a join forms f on f.id = a.form_id where f.workspace_id = $1 order by a.created_at desc`,
+    [workspaceId],
   )
   const map = new Map<string, Customer>()
   for (const r of rows) {
@@ -426,9 +440,9 @@ async function notifyNew(q: Q, form: FormRecord, item: Item, app: Application, n
 export async function applyToForm(input: ApplyInput) {
   const d = await db()
   return d.transaction(async tx => {
-    const { now } = await getClock(tx)
     const form = await loadFormBySlug(tx, input.formSlug)
     if (!form || form.status !== 'published') throw new UserError('지금은 신청을 받지 않는 폼입니다.')
+    const { now } = await getClock(tx, form.workspaceId)
     if (!isOpen(form.offer, now)) throw new UserError(`${formatDateTime(form.offer.openAt!)}부터 신청할 수 있습니다.`)
     await reconcile(tx, form, now)
 
@@ -564,22 +578,26 @@ export async function applicantCancel(appId: string) {
 
 /* ---------- operator actions ---------- */
 
-export async function operatorCancel(appId: string) {
-  return withApp(appId, (tx, ctx) => cancelCore(tx, ctx, 'operator'))
+export async function operatorCancel(workspaceId: string, appId: string) {
+  return withApp(appId, (tx, ctx) => cancelCore(tx, ctx, 'operator'), workspaceId)
 }
 
-export async function confirmDeposit(appId: string) {
-  return withApp(appId, async (tx, { form, item, app, now }) => {
-    if (app.status !== 'pending_deposit') throw new UserError('입금 대기 중인 신청이 아닙니다.')
-    await confirmAndNotify(tx, form, item, await setStatus(tx, app.id, 'confirmed', now), now)
-  })
+export async function confirmDeposit(workspaceId: string, appId: string) {
+  return withApp(
+    appId,
+    async (tx, { form, item, app, now }) => {
+      if (app.status !== 'pending_deposit') throw new UserError('입금 대기 중인 신청이 아닙니다.')
+      await confirmAndNotify(tx, form, item, await setStatus(tx, app.id, 'confirmed', now), now)
+    },
+    workspaceId,
+  )
 }
 
-export async function confirmDeposits(ids: string[]) {
+export async function confirmDeposits(workspaceId: string, ids: string[]) {
   let done = 0
   for (const id of ids) {
     try {
-      await confirmDeposit(id)
+      await confirmDeposit(workspaceId, id)
       done++
     } catch (e) {
       if (!(e instanceof UserError)) throw e
@@ -590,18 +608,26 @@ export async function confirmDeposits(ids: string[]) {
 
 // Applicants normally get their check-in QR link once, at confirmation. This resends the
 // same notification (with the link to their status page and QR) on demand, e.g. if it never arrived.
-export async function resendCheckinLink(appId: string) {
-  return withApp(appId, async (tx, { form, item, app, now }) => {
-    if (app.status !== 'confirmed') throw new UserError('확정된 신청만 입장 QR을 다시 보낼 수 있습니다.')
-    await sendMessage(tx, { form, item, app, trigger: 'confirmed', now })
-  })
+export async function resendCheckinLink(workspaceId: string, appId: string) {
+  return withApp(
+    appId,
+    async (tx, { form, item, app, now }) => {
+      if (app.status !== 'confirmed') throw new UserError('확정된 신청만 입장 QR을 다시 보낼 수 있습니다.')
+      await sendMessage(tx, { form, item, app, trigger: 'confirmed', now })
+    },
+    workspaceId,
+  )
 }
 
-export async function setCheckIn(appId: string, checked: boolean) {
-  return withApp(appId, async (tx, { app, now }) => {
-    if (checked && app.status !== 'confirmed') throw new UserError('확정된 신청만 입장 처리할 수 있습니다.')
-    await tx.query(`update applications set checked_in_at = $2::timestamptz where id = $1`, [app.id, checked ? now.toISOString() : null])
-  })
+export async function setCheckIn(workspaceId: string, appId: string, checked: boolean) {
+  return withApp(
+    appId,
+    async (tx, { app, now }) => {
+      if (checked && app.status !== 'confirmed') throw new UserError('확정된 신청만 입장 처리할 수 있습니다.')
+      await tx.query(`update applications set checked_in_at = $2::timestamptz where id = $1`, [app.id, checked ? now.toISOString() : null])
+    },
+    workspaceId,
+  )
 }
 
 export type ManualInput = {
@@ -616,12 +642,12 @@ export type ManualInput = {
   allowOver: boolean
 }
 
-export async function manualRegister(input: ManualInput) {
+export async function manualRegister(workspaceId: string, input: ManualInput) {
   const d = await db()
   return d.transaction(async tx => {
-    const { now } = await getClock(tx)
-    const form = await loadForm(tx, input.formId)
+    const form = await loadOwnForm(tx, workspaceId, input.formId)
     if (!form) throw new UserError('폼을 찾을 수 없습니다.')
+    const { now } = await getClock(tx, workspaceId)
     await reconcile(tx, form, now)
     const { rows } = await tx.query<ItemRow>(`select * from items where id = $1 and form_id = $2 for update`, [input.itemId, form.id])
     if (!rows[0]) throw new UserError('항목을 골라 주세요.')
@@ -656,44 +682,48 @@ export async function manualRegister(input: ManualInput) {
   })
 }
 
-export async function shiftClock(ms: number | null) {
+export async function shiftClock(workspaceId: string, ms: number | null) {
   const d = await db()
-  const { offsetMs } = await getClock(d)
+  const { offsetMs } = await getClock(d, workspaceId)
   const next = ms === null ? 0 : offsetMs + ms
-  await d.query(`insert into settings (key, value) values ('clock_offset_ms', $1) on conflict (key) do update set value = excluded.value`, [String(next)])
+  await d.query(
+    `insert into workspace_settings (workspace_id, key, value) values ($1, 'clock_offset_ms', $2)
+     on conflict (workspace_id, key) do update set value = excluded.value`,
+    [workspaceId, String(next)],
+  )
 }
 
 /* ---------- wizard ---------- */
 
-export async function createDraft() {
+export async function createDraft(workspaceId: string) {
   const d = await db()
   const id = randomUUID()
-  await d.query(`insert into forms (id, slug, title, status, offer, questions, theme) values ($1, $2, $3, 'draft', $4::jsonb, $5::jsonb, $6::jsonb)`, [
-    id,
-    `form-${id.slice(0, 6)}`,
-    '새 신청 폼',
-    JSON.stringify(defaultOffer()),
-    JSON.stringify(defaultQuestions()),
-    JSON.stringify(defaultTheme()),
-  ])
+  await d.query(
+    `insert into forms (id, workspace_id, slug, title, status, offer, questions, theme) values ($1, $2, $3, $4, 'draft', $5::jsonb, $6::jsonb, $7::jsonb)`,
+    [id, workspaceId, `form-${id.slice(0, 6)}`, '새 신청 폼', JSON.stringify(defaultOffer()), JSON.stringify(defaultQuestions()), JSON.stringify(defaultTheme())],
+  )
   return id
 }
 
-export async function duplicateForm(formId: string) {
+export async function duplicateForm(workspaceId: string, formId: string) {
   const d = await db()
   return d.transaction(async tx => {
-    const form = await loadForm(tx, formId)
+    const form = await loadOwnForm(tx, workspaceId, formId)
     if (!form) throw new UserError('폼을 찾을 수 없습니다.')
     const id = randomUUID()
-    await tx.query(`insert into forms (id, slug, title, description, status, offer, questions, theme) values ($1, $2, $3, $4, 'draft', $5::jsonb, $6::jsonb, $7::jsonb)`, [
-      id,
-      `${form.slug.slice(0, 32)}-${id.slice(0, 4)}`,
-      `${form.title} (복사본)`,
-      form.description,
-      JSON.stringify(form.offer),
-      JSON.stringify(form.questions),
-      JSON.stringify(form.theme),
-    ])
+    await tx.query(
+      `insert into forms (id, workspace_id, slug, title, description, status, offer, questions, theme) values ($1, $2, $3, $4, $5, 'draft', $6::jsonb, $7::jsonb, $8::jsonb)`,
+      [
+        id,
+        workspaceId,
+        `${form.slug.slice(0, 32)}-${id.slice(0, 4)}`,
+        `${form.title} (복사본)`,
+        form.description,
+        JSON.stringify(form.offer),
+        JSON.stringify(form.questions),
+        JSON.stringify(form.theme),
+      ],
+    )
     for (const item of await loadItems(tx, formId)) {
       await tx.query(
         `insert into items (id, form_id, label, starts_at, ends_at, price, capacity, position) values ($1, $2, $3, $4::timestamptz, $5::timestamptz, $6, $7, $8)`,
@@ -736,12 +766,12 @@ function cleanTheme(t: Theme): Theme {
   return { color: /^#[0-9a-f]{6}$/i.test(t.color) ? t.color : defaultTheme().color, logo: img(t.logo), cover: img(t.cover) }
 }
 
-export async function saveForm(formId: string, p: WizardPayload) {
+export async function saveForm(workspaceId: string, formId: string, p: WizardPayload) {
   const d = await db()
   return d.transaction(async tx => {
-    const { now } = await getClock(tx)
-    const form = await loadForm(tx, formId)
+    const form = await loadOwnForm(tx, workspaceId, formId)
     if (!form) throw new UserError('폼을 찾을 수 없습니다.')
+    const { now } = await getClock(tx, workspaceId)
 
     const title = p.title.trim()
     const slug = p.slug.trim().toLowerCase()
@@ -797,16 +827,18 @@ export async function saveForm(formId: string, p: WizardPayload) {
   })
 }
 
-export async function publishForm(formId: string) {
+export async function publishForm(workspaceId: string, formId: string) {
   const d = await db()
-  const form = await loadForm(d, formId)
+  const form = await loadOwnForm(d, workspaceId, formId)
   if (!form) throw new UserError('폼을 찾을 수 없습니다.')
   const errors = publishChecks(form.offer, await loadItems(d, formId), form.questions).filter(c => c.level === 'error')
   if (errors.length > 0) throw new UserError(errors[0].text)
   await d.query(`update forms set status = 'published' where id = $1`, [formId])
 }
 
-export async function setFormStatus(formId: string, status: 'published' | 'closed') {
+export async function setFormStatus(workspaceId: string, formId: string, status: 'published' | 'closed') {
   const d = await db()
+  const form = await loadOwnForm(d, workspaceId, formId)
+  if (!form) throw new UserError('폼을 찾을 수 없습니다.')
   await d.query(`update forms set status = $2 where id = $1`, [formId, status])
 }

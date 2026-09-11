@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { checkInAction } from '@/app/actions'
 import { ActionButton } from '@/components/ActionButton'
+import { requireWorkspace } from '@/lib/auth'
 import { getCheckin } from '@/lib/engine'
 import { formatDate, formatTime, itemLabel } from '@/lib/format'
 
@@ -10,7 +11,8 @@ export const dynamic = 'force-dynamic'
 export default async function Checkin(props: PageProps<'/admin/forms/[id]/checkin'>) {
   const { id } = await props.params
   const { q = '', item: itemFilter = '' } = (await props.searchParams) as { q?: string; item?: string }
-  const data = await getCheckin(id)
+  const { workspaceId } = await requireWorkspace()
+  const data = await getCheckin(workspaceId, id)
   if (!data) notFound()
   const { form, stats, applications } = data
   const byId = new Map(stats.map(s => [s.id, s]))

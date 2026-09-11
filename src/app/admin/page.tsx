@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { createDraftAction, duplicateFormAction } from '@/app/actions'
+import { requireWorkspace } from '@/lib/auth'
 import { listForms } from '@/lib/engine'
 
 export const dynamic = 'force-dynamic'
@@ -8,7 +9,8 @@ const FORM_STATUS = { draft: '작성 중', published: '신청 받는 중', close
 const STRUCTURE = { simple: '단순 신청', single: '권종', slots: '시간대' } as const
 
 export default async function AdminHome() {
-  const forms = await listForms()
+  const { workspaceId } = await requireWorkspace()
+  const forms = await listForms(workspaceId)
 
   return (
     <>
