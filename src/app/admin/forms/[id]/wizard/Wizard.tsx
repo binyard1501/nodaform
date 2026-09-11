@@ -31,6 +31,8 @@ export function Wizard({
     items: initialItems,
     questions: initial.questions,
     theme: initial.theme,
+    mode: initial.mode,
+    customHtml: initial.customHtml,
   })
   const [error, setError] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<string | null>(null)

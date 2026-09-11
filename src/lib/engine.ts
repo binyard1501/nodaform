@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { getClock, mapApp, mapForm, mapItem, mapMessage, rawDb, type AppRow, type FormRow, type ItemRow, type MessageRow, type Q } from './db'
 import { formatDateTime, itemLabel } from './format'
+import { sanitizeFormHtml } from './sanitizeHtml'
 import { sendMessage } from './messaging'
 import { applicantCanChange, fits, isClosed, isOpen, priceOf, publishChecks, refundFor, remainingOf } from './rules'
 import {
@@ -9,7 +10,9 @@ import {
   defaultTheme,
   type Answers,
   type Application,
+  type CustomHtml,
   type FieldDef,
+  type FormMode,
   type FormRecord,
   type Item,
   type ItemStats,
@@ -712,7 +715,8 @@ export async function duplicateForm(workspaceId: string, formId: string) {
     if (!form) throw new UserError('폼을 찾을 수 없습니다.')
     const id = randomUUID()
     await tx.query(
-      `insert into forms (id, workspace_id, slug, title, description, status, offer, questions, theme) values ($1, $2, $3, $4, $5, 'draft', $6::jsonb, $7::jsonb, $8::jsonb)`,
+      `insert into forms (id, workspace_id, slug, title, description, status, offer, questions, theme, mode, custom_html)
+       values ($1, $2, $3, $4, $5, 'draft', $6::jsonb, $7::jsonb, $8::jsonb, $9, $10::jsonb)`,
       [
         id,
         workspaceId,
@@ -722,6 +726,8 @@ export async function duplicateForm(workspaceId: string, formId: string) {
         JSON.stringify(form.offer),
         JSON.stringify(form.questions),
         JSON.stringify(form.theme),
+        form.mode,
+        JSON.stringify(form.customHtml),
       ],
     )
     for (const item of await loadItems(tx, formId)) {
@@ -742,6 +748,8 @@ export type WizardPayload = {
   items: Item[]
   questions: Questions
   theme: Theme
+  mode: FormMode
+  customHtml: CustomHtml
 }
 
 const FIELD_TYPES = new Set(['text', 'textarea', 'email', 'select', 'multi', 'consent'])
@@ -766,6 +774,14 @@ function cleanTheme(t: Theme): Theme {
   return { color: /^#[0-9a-f]{6}$/i.test(t.color) ? t.color : defaultTheme().color, logo: img(t.logo), cover: img(t.cover) }
 }
 
+// The client-side scan/preview already sanitizes for editing convenience, but the stored copy is
+// always re-sanitized here since a save can arrive from anywhere that calls saveForm directly.
+function cleanCustomHtml(c: CustomHtml): CustomHtml {
+  const html = (c.html ?? '').slice(0, 200_000)
+  if (html.length === 200_000) throw new UserError('HTML이 너무 큽니다 (200,000자 이하).')
+  return { source: c.source === 'upload' ? 'upload' : 'paste', html: sanitizeFormHtml(html), lastScannedAt: c.lastScannedAt }
+}
+
 export async function saveForm(workspaceId: string, formId: string, p: WizardPayload) {
   const d = await db()
   return d.transaction(async tx => {
@@ -786,9 +802,10 @@ export async function saveForm(workspaceId: string, formId: string, p: WizardPay
       throw new UserError('신청이 들어온 뒤에는 신청 방식을 바꿀 수 없습니다. 폼을 복제해서 새로 만들어 주세요.')
     }
     if (p.offer.structure === 'simple' && p.items.length !== 1) throw new UserError('단순 신청은 항목이 하나여야 합니다.')
+    if (p.mode === 'custom_html' && p.offer.structure !== 'simple') throw new UserError('커스텀 HTML 모드는 단순 신청 구조에서만 쓸 수 있습니다.')
     // A published form goes live on every save, so it must stay publishable while being edited.
     if (form.status === 'published') {
-      const broken = publishChecks(p.offer, p.items, p.questions).find(c => c.level === 'error')
+      const broken = publishChecks(p.offer, p.items, p.questions, p.mode, p.customHtml).find(c => c.level === 'error')
       if (broken) throw new UserError(`게시 중인 폼이라 바로 반영됩니다. 먼저 고쳐 주세요: ${broken.text}`)
     }
 
@@ -814,15 +831,21 @@ export async function saveForm(workspaceId: string, formId: string, p: WizardPay
       )
     }
 
-    await tx.query(`update forms set title = $2, slug = $3, description = $4, offer = $5::jsonb, questions = $6::jsonb, theme = $7::jsonb where id = $1`, [
-      formId,
-      title,
-      slug,
-      p.description,
-      JSON.stringify(p.offer),
-      JSON.stringify(cleanQuestions(p.questions)),
-      JSON.stringify(cleanTheme(p.theme)),
-    ])
+    await tx.query(
+      `update forms set title = $2, slug = $3, description = $4, offer = $5::jsonb, questions = $6::jsonb, theme = $7::jsonb,
+         mode = $8, custom_html = $9::jsonb where id = $1`,
+      [
+        formId,
+        title,
+        slug,
+        p.description,
+        JSON.stringify(p.offer),
+        JSON.stringify(cleanQuestions(p.questions)),
+        JSON.stringify(cleanTheme(p.theme)),
+        p.mode === 'custom_html' ? 'custom_html' : 'structured',
+        JSON.stringify(cleanCustomHtml(p.customHtml)),
+      ],
+    )
     await reconcile(tx, (await loadForm(tx, formId))!, now)
   })
 }
@@ -831,7 +854,7 @@ export async function publishForm(workspaceId: string, formId: string) {
   const d = await db()
   const form = await loadOwnForm(d, workspaceId, formId)
   if (!form) throw new UserError('폼을 찾을 수 없습니다.')
-  const errors = publishChecks(form.offer, await loadItems(d, formId), form.questions).filter(c => c.level === 'error')
+  const errors = publishChecks(form.offer, await loadItems(d, formId), form.questions, form.mode, form.customHtml).filter(c => c.level === 'error')
   if (errors.length > 0) throw new UserError(errors[0].text)
   await d.query(`update forms set status = 'published' where id = $1`, [formId])
 }

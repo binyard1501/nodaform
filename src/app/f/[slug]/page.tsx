@@ -5,6 +5,7 @@ import { getPublic } from '@/lib/engine'
 import { formatDate } from '@/lib/format'
 import { isOpen } from '@/lib/rules'
 import { ApplyForm } from './ApplyForm'
+import { CustomApplyForm } from './CustomApplyForm'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,6 +25,8 @@ export default async function PublicForm(props: PageProps<'/f/[slug]'>) {
     >
       {form.status === 'closed' ? (
         <p className="status-card">신청이 마감되었습니다. 문의는 운영자에게 연락해 주세요.</p>
+      ) : form.mode === 'custom_html' ? (
+        <CustomApplyForm slug={slug} itemId={stats[0]?.id ?? ''} html={form.customHtml.html} />
       ) : (
         <ApplyForm
           slug={slug}

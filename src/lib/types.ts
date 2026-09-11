@@ -43,6 +43,12 @@ export type Theme = { color: string; logo: string | null; cover: string | null }
 export type Answer = string | string[] | boolean
 export type Answers = Record<string, Answer>
 
+// 'structured' renders the built-in field layout (theme-only customization). 'custom_html' renders
+// operator-supplied markup as-is; its fields are scanned into Questions.fields like any other field.
+export type FormMode = 'structured' | 'custom_html'
+export type CustomHtmlSource = 'paste' | 'upload'
+export type CustomHtml = { source: CustomHtmlSource; html: string; lastScannedAt: string | null }
+
 export type Item = {
   id: string
   label: string
@@ -63,6 +69,8 @@ export type FormRecord = {
   offer: Offer
   questions: Questions
   theme: Theme
+  mode: FormMode
+  customHtml: CustomHtml
 }
 
 export type ItemStats = Item & {
@@ -208,4 +216,12 @@ export function normalizeQuestions(raw: Partial<Questions> | null | undefined): 
 
 export function normalizeTheme(raw: Partial<Theme> | null | undefined): Theme {
   return { ...defaultTheme(), ...(raw ?? {}) }
+}
+
+export function defaultCustomHtml(): CustomHtml {
+  return { source: 'paste', html: '', lastScannedAt: null }
+}
+
+export function normalizeCustomHtml(raw: Partial<CustomHtml> | null | undefined): CustomHtml {
+  return { ...defaultCustomHtml(), ...(raw ?? {}) }
 }

@@ -2,6 +2,7 @@ import { PGlite } from '@electric-sql/pglite'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import {
+  normalizeCustomHtml,
   normalizeOffer,
   normalizeQuestions,
   normalizeTheme,
@@ -9,6 +10,8 @@ import {
   type Answers,
   type Application,
   type Channel,
+  type CustomHtml,
+  type FormMode,
   type FormRecord,
   type FormStatus,
   type Item,
@@ -110,6 +113,8 @@ create index if not exists applications_phone on applications(phone);
 alter table forms add column if not exists workspace_id text references workspaces(id);
 create index if not exists forms_workspace on forms(workspace_id);
 create index if not exists sessions_expires on sessions(expires_at);
+alter table forms add column if not exists mode text not null default 'structured';
+alter table forms add column if not exists custom_html jsonb not null default '{"source":"paste","html":"","lastScannedAt":null}'::jsonb;
 `
 
 const g = globalThis as unknown as { __nodaDb?: Promise<PGlite> }
@@ -145,6 +150,8 @@ export type FormRow = {
   offer: Offer
   questions: Questions
   theme: Theme
+  mode: string
+  custom_html: CustomHtml
 }
 export type ItemRow = {
   id: string
@@ -198,6 +205,8 @@ export const mapForm = (r: FormRow): FormRecord => ({
   offer: normalizeOffer(r.offer),
   questions: normalizeQuestions(r.questions),
   theme: normalizeTheme(r.theme),
+  mode: r.mode === 'custom_html' ? 'custom_html' : ('structured' as FormMode),
+  customHtml: normalizeCustomHtml(r.custom_html),
 })
 
 export const mapItem = (r: ItemRow): Item => ({

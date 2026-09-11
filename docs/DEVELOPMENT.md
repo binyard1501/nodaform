@@ -1,6 +1,6 @@
 # 노다(nodaform) 개발 문서
 
-마지막 갱신: 2026-09-11
+마지막 갱신: 2026-09-11 (완전자유 HTML 모드 Phase 1 구현 완료)
 
 이 문서는 지금까지 구현된 것, 왜 그렇게 만들었는지, 그리고 앞으로 해야 할 일을 정리합니다. 새 세션에서 이어서 작업할 때 이 문서부터 읽으면 맥락을 다시 설명할 필요가 없도록 관리합니다.
 
@@ -66,9 +66,24 @@ src/app/login, /signup 인증 화면
 
 - **온라인 결제(토스페이먼츠) 연동**: 사용자 요청으로 보류. 계약 모델(① 각 운영자가 직접 PG 가맹점 계약 vs ② 노다가 대표 가맹점으로 플랫폼 정산)을 아직 결정하지 않음. 현재 방향: **①로 시작**, 결제 모듈을 인터페이스로 분리해 나중에 ②(토스 "플랫폼 정산" 상품 활용)로 전환 가능하게 설계. 법적 걸림돌(전자금융업 등록 여부)은 코드 문제가 아니므로 별도 트랙으로 검토 필요.
 - **실제 알림톡/SMS 발송**: 카카오 비즈니스/문자 API 연동 필요. 현재는 로그 테이블에만 렌더링된 메시지를 남김.
-- **완전자유 HTML 모드**: 설계는 아래 섹션 참고, 구현은 아직 시작 전.
+### 5. 완전자유 HTML 모드 — Phase 1 구현 완료
 
-## 다음 설계: 완전자유 HTML 모드
+아래 설계대로 구현됨:
+
+- `types.ts`: `FormMode`('structured'|'custom_html'), `CustomHtml`(`source`, `html`, `lastScannedAt`) 추가. `FormRecord.mode`/`customHtml` 필드로 노출
+- `db.ts`: `forms.mode`, `forms.custom_html` 컬럼 추가 (기본값 `'structured'` / 빈 HTML)
+- `lib/htmlScan.ts` (신규): `node-html-parser`로 정적 HTML을 파싱해 `name="f_<id>"` 규약을 따르는 `<input>/<select>/<textarea>`를 스캔 → `FieldDef[]`로 변환. 체크박스 그룹(같은 name 여러 개)은 자동으로 multi-select로 인식. `mergeScannedFields()`가 기존 `questions.fields`와 병합 — 이미 있던 필드는 라벨/필수여부 등 운영자가 편집한 내용을 유지하고, 새 필드만 추가, 스캔에서 사라진 필드는 목록에서 빠짐(과거 응답에는 남음)
+- `lib/sanitizeHtml.ts` (신규): `sanitize-html`로 `<script>`, 이벤트 핸들러 속성, `javascript:` URL, 중첩 `<form>` 태그를 제거. 저장 시(서버) 항상 재적용되므로 클라이언트를 우회해도 안전
+- 스캔은 기존 `Questions.fields`에 직접 병합되므로 **CSV export, 응답 조회, 3단계(신청서 항목) 편집 UI를 그대로 재사용** — 별도 필드 저장소를 만들지 않음(설계 문서 대비 단순화한 부분)
+- 마법사 7단계(디자인)에 "고정 디자인 / 커스텀 HTML" 토글 추가. 커스텀 HTML 선택 시: 붙여넣기·파일 업로드, "필드 스캔하기" 버튼(서버 액션 `scanCustomHtmlAction`), 스캔 결과 요약("신규 N개, 삭제 M개"), sandboxed iframe 미리보기
+- v1 제약(설계대로): `offer.structure === 'simple'`일 때만 사용 가능 — 구조를 다른 값으로 바꾸면 자동으로 `structured` 모드로 되돌아감
+- `publishChecks()`가 모드/HTML 유무를 검증 (`mode`, `customHtml` 인자 추가)
+- 공개 신청 화면(`/f/[slug]`)은 `mode === 'custom_html'`일 때 `CustomApplyForm`이 sanitize된 HTML을 `<form action={applyAction}>` 안에 그대로 렌더링 — 기존 `f_` 접두사 파싱 로직(`applyAction`)은 변경 없이 재사용
+- **Playwright로 종단 검증**: 폼 생성 → 커스텀 HTML 붙여넣기 → 스캔(신규 필드 2개 감지) → 3단계에 반영 확인 → 게시 → 공개 화면 렌더링 → 실제 신청 제출 → 확정 상태 페이지에 커스텀 답변 노출까지 전체 플로우 확인. 별도로 `<script>`/`onclick`/`onerror`/`javascript:` URL/중첩 `<form>`을 주입한 악성 HTML로 재현 — 전부 제거되고 실행되지 않음을 확인
+
+**Phase 2(GitHub 연동 자동 재스캔), Phase 3(rename 매핑)는 아직 미구현.**
+
+## 완전자유 HTML 모드 설계 (Phase 1 구현 시 참고한 원안)
 
 ### 배경
 
@@ -145,7 +160,7 @@ answers[key.slice(2)] = ...
 
 ## 다음 우선순위 후보 (미결정, 사용자 확인 필요)
 
-1. 완전자유 HTML 모드 Phase 1 구현 (다음 작업으로 예정)
+1. ~~완전자유 HTML 모드 Phase 1~~ — 완료. Phase 2(GitHub 연동), Phase 3(rename 매핑)는 미착수
 2. 결제 계약 모델 확정 후 토스페이먼츠 연동
 3. 요금제(무료/유료 경계) 설계 — 과금은 프론트엔드 방식과 무관하게 백엔드 사용량(제출 건수, SMS 발송량, 커스텀 도메인 등) 기준으로 하기로 논의됨
 4. 실 발송 연동 (알림톡/SMS)

@@ -4,7 +4,9 @@ import { refresh } from 'next/cache'
 import { redirect } from 'next/navigation'
 import * as auth from '@/lib/auth'
 import * as engine from '@/lib/engine'
-import type { Method } from '@/lib/types'
+import { mergeScannedFields, scanCustomHtmlFields } from '@/lib/htmlScan'
+import { sanitizeFormHtml } from '@/lib/sanitizeHtml'
+import type { FieldDef, Method } from '@/lib/types'
 
 export type ActionResult = { error?: string; message?: string }
 
@@ -68,6 +70,23 @@ export async function saveWizardAction(formId: string, payload: engine.WizardPay
     const workspaceId = await auth.requireWorkspaceId()
     await engine.saveForm(workspaceId, formId, payload)
     return {}
+  } catch (e) {
+    return fail(e)
+  }
+}
+
+export type ScanResult = ActionResult & { fields?: FieldDef[]; added?: number; removed?: number }
+
+// Pure text transform (sanitize + parse) — no DB access, so this only needs to confirm the
+// caller is a signed-in operator, not which workspace they're in.
+export async function scanCustomHtmlAction(html: string, existingFields: FieldDef[]): Promise<ScanResult> {
+  try {
+    await auth.requireWorkspaceId()
+    const clean = sanitizeFormHtml(html)
+    const scanned = scanCustomHtmlFields(clean)
+    if (scanned.length === 0) return { error: 'f_ 로 시작하는 입력 항목을 찾지 못했습니다. name="f_항목id" 형식인지 확인해 주세요.' }
+    const { fields, added, removed } = mergeScannedFields(existingFields, scanned)
+    return { fields, added, removed }
   } catch (e) {
     return fail(e)
   }

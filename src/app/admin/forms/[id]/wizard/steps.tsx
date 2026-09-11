@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, type CSSProperties } from 'react'
+import { useState, useTransition, type CSSProperties } from 'react'
+import { scanCustomHtmlAction } from '@/app/actions'
 import { inkFor } from '@/lib/color'
 import { formatDate, formatDateTime, itemLabel, krw, kstIso, refundText, toKstInput } from '@/lib/format'
 import { durationText, isPaid, publishChecks, sortedRefundRules } from '@/lib/rules'
@@ -10,8 +11,10 @@ import {
   FIELD_TYPE_LABEL,
   TEMPLATE_VARS,
   TRIGGER_LABEL,
+  type CustomHtml,
   type FieldDef,
   type FieldType,
+  type FormMode,
   type FormStatus,
   type Item,
   type MessageRule,
@@ -29,6 +32,8 @@ export type WizardState = {
   items: Item[]
   questions: Questions
   theme: Theme
+  mode: FormMode
+  customHtml: CustomHtml
 }
 
 export type StepProps = {
@@ -79,7 +84,9 @@ export function StepBasics(props: StepProps) {
     let items = s.items
     if (structure === 'simple') items = [s.items[0] ? { ...s.items[0], label: '신청' } : newItem({ label: '신청', capacity: null })]
     else if (s.offer.structure === 'simple') items = s.items.map(i => ({ ...i, capacity: i.capacity ?? 30, label: i.label === '신청' ? '참가권' : i.label }))
-    update({ offer: { ...s.offer, structure }, items })
+    // Custom HTML mode only supports the simple structure — moving away from it falls back to the fixed design.
+    const mode = structure === 'simple' ? s.mode : 'structured'
+    update({ offer: { ...s.offer, structure }, items, mode })
   }
 
   return (
@@ -910,6 +917,9 @@ async function downscale(file: File, maxWidth: number, type: 'image/png' | 'imag
 export function StepDesign({ s, update, onError }: StepProps) {
   const t = s.theme
   const setTheme = (p: Partial<Theme>) => update({ theme: { ...t, ...p } })
+  const [pending, start] = useTransition()
+  const [scanMsg, setScanMsg] = useState<string | null>(null)
+  const canCustomHtml = s.offer.structure === 'simple'
 
   async function pick(kind: 'logo' | 'cover', file: File | undefined) {
     if (!file) return
@@ -924,6 +934,40 @@ export function StepDesign({ s, update, onError }: StepProps) {
     }
   }
 
+  function setMode(mode: FormMode) {
+    if (mode === 'custom_html' && !canCustomHtml) {
+      onError('커스텀 HTML 모드는 1단계에서 "단순 신청" 구조를 골라야 쓸 수 있습니다.')
+      return
+    }
+    onError(null)
+    update({ mode })
+  }
+
+  function scan() {
+    setScanMsg(null)
+    start(async () => {
+      const result = await scanCustomHtmlAction(s.customHtml.html, s.questions.fields)
+      if (result.error) {
+        onError(result.error)
+        return
+      }
+      onError(null)
+      update({
+        questions: { ...s.questions, fields: result.fields! },
+        customHtml: { ...s.customHtml, lastScannedAt: new Date().toISOString() },
+      })
+      setScanMsg(`감지된 항목 ${result.fields!.length}개 (신규 ${result.added}, 삭제 ${result.removed}) · 3단계 '신청서 항목'에서 라벨과 필수 여부를 확인하세요.`)
+    })
+  }
+
+  async function uploadHtml(file: File | undefined) {
+    if (!file) return
+    if (!file.name.toLowerCase().endsWith('.html') && file.type !== 'text/html') return onError('.html 파일만 올릴 수 있습니다.')
+    const text = await file.text()
+    onError(null)
+    update({ customHtml: { ...s.customHtml, html: text, source: 'upload' } })
+  }
+
   const preview = { '--brand': t.color, '--brand-ink': inkFor(t.color) } as CSSProperties
 
   return (
@@ -931,7 +975,65 @@ export function StepDesign({ s, update, onError }: StepProps) {
       <Title title="신청 화면 디자인">
         브랜드 색, 로고, 커버 이미지를 넣으면 신청 화면과 신청 내역 화면에 모두 적용됩니다. 입력 칸의 위치와 순서는 노다가 정해 두어서, 디자인을 바꿔도 신청서가 깨지지 않습니다.
       </Title>
-      <div className="theme-grid">
+
+      <div className="field">
+        <span className="label">화면 방식</span>
+        <div className="stack" style={{ gap: 8 }} role="radiogroup" aria-label="화면 방식">
+          <label className="check">
+            <input type="radio" name="designMode" checked={s.mode !== 'custom_html'} onChange={() => setMode('structured')} />
+            <span>고정 디자인 · 노다가 배치를 정하고, 색·로고·커버만 바꿉니다</span>
+          </label>
+          <label className="check">
+            <input type="radio" name="designMode" checked={s.mode === 'custom_html'} onChange={() => setMode('custom_html')} disabled={!canCustomHtml} />
+            <span>
+              커스텀 HTML · 직접 만든 화면을 그대로 붙여넣습니다
+              {!canCustomHtml && <small> (1단계에서 &apos;단순 신청&apos;으로 바꿔야 고를 수 있습니다)</small>}
+            </span>
+          </label>
+        </div>
+      </div>
+
+      {s.mode === 'custom_html' ? (
+        <div className="stack" style={{ gap: 16 }}>
+          <p className="muted small">
+            신청서의 입력 칸은 커스텀 항목이면 <code>name=&quot;f_항목id&quot;</code>, 이름·전화번호는 <code>name=&quot;name&quot;</code> ·{' '}
+            <code>name=&quot;phone&quot;</code> 을 그대로 써 주세요. 저장할 때 &lt;script&gt;와 이벤트 속성은 제거되고, 자바스크립트로 그려지는 항목은
+            인식하지 못합니다 — 정적인 HTML만 지원합니다.
+          </p>
+          <div className="field">
+            <span className="label">HTML 붙여넣기 또는 파일 올리기</span>
+            <input type="file" accept=".html,text/html" onChange={e => uploadHtml(e.target.files?.[0])} aria-label="HTML 파일 올리기" />
+            <textarea
+              className="input mono"
+              style={{ minHeight: 220 }}
+              value={s.customHtml.html}
+              onChange={e => update({ customHtml: { ...s.customHtml, html: e.target.value, source: 'paste' } })}
+              placeholder={'<label>이름<input name="name" required /></label>\n<label>궁금한 점<textarea name="f_question"></textarea></label>'}
+            />
+          </div>
+          <div className="row">
+            <button type="button" className="btn btn-primary" onClick={scan} disabled={pending || !s.customHtml.html.trim()}>
+              {pending ? '스캔 중…' : '필드 스캔하기'}
+            </button>
+            {s.customHtml.lastScannedAt && (
+              <span className="small muted">마지막 스캔: {new Date(s.customHtml.lastScannedAt).toLocaleString('ko-KR')}</span>
+            )}
+          </div>
+          {scanMsg && <p className="status-card tone-ok small">{scanMsg}</p>}
+          {s.customHtml.html.trim() && (
+            <div className="field">
+              <span className="label">미리보기 · 스크립트는 실행되지 않습니다</span>
+              <iframe
+                title="커스텀 HTML 미리보기"
+                sandbox=""
+                srcDoc={s.customHtml.html}
+                style={{ width: '100%', height: 320, border: '1px solid var(--rule)', borderRadius: 8, background: '#fff' }}
+              />
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="theme-grid">
         <div className="stack" style={{ gap: 22 }}>
           <div className="field">
             <span className="label">브랜드 색 · 버튼과 선택 표시에 쓰입니다</span>
@@ -991,7 +1093,8 @@ export function StepDesign({ s, update, onError }: StepProps) {
             <span className="pv-btn">신청하기</span>
           </div>
         </div>
-      </div>
+        </div>
+      )}
     </>
   )
 }
@@ -1037,7 +1140,7 @@ function summarize({ offer, items, questions }: WizardState) {
 }
 
 export function StepReview({ s, status, pending, onPublish }: StepProps & { status: FormStatus; pending: boolean; onPublish: () => void }) {
-  const checks = publishChecks(s.offer, s.items, s.questions)
+  const checks = publishChecks(s.offer, s.items, s.questions, s.mode, s.customHtml)
   return (
     <>
       <Title title="검토하고 게시">이 문장이 맞게 읽히면 설정이 맞은 것입니다.</Title>

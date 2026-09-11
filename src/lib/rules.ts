@@ -1,4 +1,4 @@
-import type { Application, Item, Offer, Questions, RefundRule } from './types'
+import type { Application, CustomHtml, FormMode, Item, Offer, Questions, RefundRule } from './types'
 
 export type Check = { level: 'ok' | 'warn' | 'error'; text: string }
 
@@ -55,8 +55,13 @@ export function durationText(minutes: number) {
   return `${minutes}분`
 }
 
-export function publishChecks(offer: Offer, items: Item[], questions: Questions): Check[] {
+export function publishChecks(offer: Offer, items: Item[], questions: Questions, mode: FormMode = 'structured', customHtml?: CustomHtml): Check[] {
   const checks: Check[] = []
+  if (mode === 'custom_html') {
+    if (offer.structure !== 'simple') checks.push({ level: 'error', text: '커스텀 HTML 모드는 단순 신청 구조만 지원합니다 · 1단계' })
+    if (!customHtml?.html.trim()) checks.push({ level: 'error', text: 'HTML이 비어 있습니다 · 디자인 단계에서 붙여넣어 주세요' })
+    else checks.push({ level: 'ok', text: '커스텀 HTML 화면' })
+  }
   if (items.length === 0) checks.push({ level: 'error', text: '판매할 항목이 없습니다 · 2단계에서 추가해 주세요' })
   else if (offer.structure === 'simple') {
     const cap = items[0].capacity
