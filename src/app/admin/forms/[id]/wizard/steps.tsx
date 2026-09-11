@@ -7,9 +7,9 @@ import { inkFor } from '@/lib/color'
 import { formatDate, formatDateTime, itemLabel, krw, kstIso, refundText, toKstInput } from '@/lib/format'
 import { durationText, isPaid, publishChecks, sortedRefundRules } from '@/lib/rules'
 import {
-  BRAND_PRESETS,
   FIELD_TYPE_LABEL,
   TEMPLATE_VARS,
+  THEME_PRESETS,
   TRIGGER_LABEL,
   type CustomHtml,
   type FieldDef,
@@ -1036,11 +1036,35 @@ export function StepDesign({ s, update, onError }: StepProps) {
         <div className="theme-grid">
         <div className="stack" style={{ gap: 22 }}>
           <div className="field">
-            <span className="label">브랜드 색 · 버튼과 선택 표시에 쓰입니다</span>
+            <span className="label">테마 선택 · 카드를 고르면 색이 바로 적용됩니다</span>
+            <div className="theme-cards">
+              {THEME_PRESETS.map(p => {
+                const cardStyle = { '--brand': p.color, '--brand-ink': inkFor(p.color) } as CSSProperties
+                const selected = t.color.toLowerCase() === p.color.toLowerCase()
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`theme-card${selected ? ' selected' : ''}`}
+                    aria-pressed={selected}
+                    onClick={() => setTheme({ color: p.color })}
+                  >
+                    <span className="theme-card-preview pub-theme" style={cardStyle}>
+                      <span className="tc-cover" />
+                      <span className="tc-body">
+                        <span className="tc-title">신청 폼</span>
+                        <span className="tc-btn">신청하기</span>
+                      </span>
+                    </span>
+                    <span className="tc-name">{p.name}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <div className="field">
+            <span className="label">직접 고르기</span>
             <div className="swatches">
-              {BRAND_PRESETS.map(c => (
-                <button key={c} type="button" style={{ background: c }} aria-pressed={t.color === c} aria-label={c} onClick={() => setTheme({ color: c })} />
-              ))}
               <input type="color" value={t.color} onChange={e => setTheme({ color: e.target.value })} aria-label="직접 고르기" />
               <span className="mono small muted">{t.color}</span>
             </div>

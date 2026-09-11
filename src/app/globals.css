@@ -371,6 +371,17 @@ details.manual[open] > summary, details.change[open] > summary { border-bottom: 
 .preview .pv-slot { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 6px 10px; font-size: 12.5px; }
 .preview .pv-btn { background: var(--accent); color: var(--on-accent); border-radius: 6px; padding: 8px; text-align: center; font-size: 13px; font-weight: 500; }
 
+.theme-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 12px; }
+.theme-card { display: grid; gap: 8px; padding: 8px; border: 2px solid var(--rule); border-radius: 10px; background: var(--surface); cursor: pointer; text-align: left; }
+.theme-card:hover { border-color: var(--muted); }
+.theme-card.selected { border-color: var(--ink); }
+.theme-card-preview { display: grid; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+.theme-card-preview .tc-cover { height: 26px; background: var(--brand); }
+.theme-card-preview .tc-body { padding: 8px; display: grid; gap: 6px; background: var(--surface); }
+.theme-card-preview .tc-title { font-family: var(--serif); font-weight: 700; font-size: 11px; color: var(--ink); }
+.theme-card-preview .tc-btn { background: var(--accent); color: var(--on-accent); border-radius: 4px; padding: 4px; text-align: center; font-size: 10px; font-weight: 500; }
+.theme-card .tc-name { font-size: 12.5px; font-weight: 500; color: var(--ink); }
+
 @media (max-width: 860px) {
   .theme-grid { grid-template-columns: minmax(0, 1fr); }
   .field-card .head { grid-template-columns: minmax(0, 1fr); }

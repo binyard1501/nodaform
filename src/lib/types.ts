@@ -161,7 +161,18 @@ export const DEFAULT_MESSAGES: MessageRule[] = [
   { trigger: 'reminder', enabled: true, channel: 'alimtalk', template: '[#{행사}] 내일 #{시간대} 입장입니다. 10분 전부터 입장 줄을 설 수 있어요.' },
 ]
 
-export const BRAND_PRESETS = ['#0e6b5b', '#1f3a8a', '#b4412f', '#7a3e9d', '#c27c0e', '#1c1c1c']
+export type ThemePreset = { id: string; name: string; color: string }
+
+export const THEME_PRESETS: ThemePreset[] = [
+  { id: 'forest', name: '포레스트', color: '#0e6b5b' },
+  { id: 'navy', name: '네이비', color: '#1f3a8a' },
+  { id: 'terracotta', name: '테라코타', color: '#b4412f' },
+  { id: 'violet', name: '바이올렛', color: '#7a3e9d' },
+  { id: 'amber', name: '앰버', color: '#c27c0e' },
+  { id: 'charcoal', name: '차콜', color: '#1c1c1c' },
+]
+
+export const BRAND_PRESETS = THEME_PRESETS.map(p => p.color)
 
 export function defaultOffer(): Offer {
   return {
