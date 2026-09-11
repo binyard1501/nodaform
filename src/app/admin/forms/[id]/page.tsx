@@ -1,10 +1,13 @@
 import Link from 'next/link'
+import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
+import QRCode from 'qrcode'
 import {
   bulkConfirmAction,
   confirmDepositAction,
   duplicateFormAction,
   operatorCancelAction,
+  resendCheckinLinkAction,
   setFormStatusAction,
   shiftClockAction,
 } from '@/app/actions'
@@ -13,6 +16,7 @@ import { getDashboard } from '@/lib/engine'
 import { formatDate, formatDateTime, itemLabel, krw, kstIso, relative, toKstInput } from '@/lib/format'
 import { CHANNEL_LABEL, METHOD_LABEL, STATUS_LABEL, TRIGGER_LABEL, type Application, type AppStatus, type FormRecord, type ItemStats } from '@/lib/types'
 import { ManualRegister } from './ManualRegister'
+import { ShareForm } from './ShareForm'
 
 export const dynamic = 'force-dynamic'
 
@@ -84,6 +88,11 @@ export default async function Dashboard(props: PageProps<'/admin/forms/[id]'>) {
   const shownStats = multiDay ? stats.filter(s => dayKey(s) === selectedDay) : stats
   const dayLabel = (d: string) => (d ? formatDate(kstIso(d, '12:00')) : '날짜 없음')
 
+  const h = await headers()
+  const origin = `${h.get('x-forwarded-proto') ?? 'http'}://${h.get('host')}`
+  const publicUrl = `${origin}/f/${form.slug}`
+  const qrSvg = form.status !== 'draft' ? await QRCode.toString(publicUrl, { type: 'svg', margin: 1, width: 220 }) : ''
+
   return (
     <>
       <div className="page-head">
@@ -99,9 +108,12 @@ export default async function Dashboard(props: PageProps<'/admin/forms/[id]'>) {
           </div>
           <div className="row">
             {form.status !== 'draft' && (
-              <Link className="btn" href={`/f/${form.slug}`} target="_blank">
-                신청 화면 열기
-              </Link>
+              <>
+                <Link className="btn" href={`/f/${form.slug}`} target="_blank">
+                  신청 화면 열기
+                </Link>
+                <ShareForm url={publicUrl} title={form.title} qrSvg={qrSvg} />
+              </>
             )}
             <Link className="btn" href={`/admin/forms/${form.id}/checkin`}>
               입장 확인
@@ -439,6 +451,16 @@ export default async function Dashboard(props: PageProps<'/admin/forms/[id]'>) {
                         {a.status === 'pending_deposit' && (
                           <ActionButton action={confirmDepositAction.bind(null, a.id)} size="sm" variant="primary">
                             입금 확인
+                          </ActionButton>
+                        )}
+                        {a.status === 'confirmed' && (
+                          <Link className="btn btn-ghost btn-sm" href={`/f/${form.slug}/a/${a.id}`} target="_blank" title="입장 QR이 있는 화면">
+                            QR 보기
+                          </Link>
+                        )}
+                        {a.status === 'confirmed' && (
+                          <ActionButton action={resendCheckinLinkAction.bind(null, a.id)} size="sm" variant="ghost">
+                            QR 다시 보내기
                           </ActionButton>
                         )}
                         {active && (

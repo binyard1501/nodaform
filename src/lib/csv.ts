@@ -1,5 +1,8 @@
+// A leading =, +, -, @, tab or CR can make Excel/Sheets read the cell as a formula
+// (CSV injection) when opened, so a guarding apostrophe is prepended to those values.
 const cell = (v: unknown) => {
-  const s = v == null ? '' : String(v)
+  let s = v == null ? '' : String(v)
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 

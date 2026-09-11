@@ -588,6 +588,15 @@ export async function confirmDeposits(ids: string[]) {
   return done
 }
 
+// Applicants normally get their check-in QR link once, at confirmation. This resends the
+// same notification (with the link to their status page and QR) on demand, e.g. if it never arrived.
+export async function resendCheckinLink(appId: string) {
+  return withApp(appId, async (tx, { form, item, app, now }) => {
+    if (app.status !== 'confirmed') throw new UserError('확정된 신청만 입장 QR을 다시 보낼 수 있습니다.')
+    await sendMessage(tx, { form, item, app, trigger: 'confirmed', now })
+  })
+}
+
 export async function setCheckIn(appId: string, checked: boolean) {
   return withApp(appId, async (tx, { app, now }) => {
     if (checked && app.status !== 'confirmed') throw new UserError('확정된 신청만 입장 처리할 수 있습니다.')

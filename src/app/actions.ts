@@ -122,6 +122,10 @@ export async function checkInAction(appId: string, checked: boolean) {
   return run(() => engine.setCheckIn(appId, checked))
 }
 
+export async function resendCheckinLinkAction(appId: string) {
+  return run(() => engine.resendCheckinLink(appId))
+}
+
 export async function manualRegisterAction(formId: string, _prev: ActionResult, data: FormData): Promise<ActionResult> {
   try {
     await engine.manualRegister({
