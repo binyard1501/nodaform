@@ -1,6 +1,9 @@
 import type { Application, CustomHtml, FormMode, Item, Offer, Questions, RefundRule } from './types'
 
-export type Check = { level: 'ok' | 'warn' | 'error'; text: string }
+// `step` is the wizard step a reader must open to fix the check. The wizard hides steps that do not
+// apply to a form, so checks name the step by key instead of by a number that would shift.
+export type CheckStep = 'basics' | 'items' | 'questions' | 'rules' | 'payment' | 'design'
+export type Check = { level: 'ok' | 'warn' | 'error'; text: string; step?: CheckStep }
 
 export function isPaid(offer: Offer, items: Pick<Item, 'price'>[]) {
   return !offer.free && items.some(i => i.price > 0)
@@ -58,11 +61,11 @@ export function durationText(minutes: number) {
 export function publishChecks(offer: Offer, items: Item[], questions: Questions, mode: FormMode = 'structured', customHtml?: CustomHtml): Check[] {
   const checks: Check[] = []
   if (mode === 'custom_html') {
-    if (offer.structure !== 'simple') checks.push({ level: 'error', text: '커스텀 HTML 모드는 단순 신청 구조만 지원합니다 · 1단계' })
-    if (!customHtml?.html.trim()) checks.push({ level: 'error', text: 'HTML이 비어 있습니다 · 디자인 단계에서 붙여넣어 주세요' })
+    if (offer.structure !== 'simple') checks.push({ level: 'error', text: '커스텀 HTML 모드는 단순 신청 구조만 지원합니다 · 기본·방식', step: 'basics' })
+    if (!customHtml?.html.trim()) checks.push({ level: 'error', text: 'HTML이 비어 있습니다 · 디자인 단계에서 붙여넣어 주세요', step: 'design' })
     else checks.push({ level: 'ok', text: '커스텀 HTML 화면' })
   }
-  if (items.length === 0) checks.push({ level: 'error', text: '판매할 항목이 없습니다 · 2단계에서 추가해 주세요' })
+  if (items.length === 0) checks.push({ level: 'error', text: '판매할 항목이 없습니다 · 가격과 정원', step: 'items' })
   else if (offer.structure === 'simple') {
     const cap = items[0].capacity
     checks.push({ level: 'ok', text: `단순 신청 · ${cap === null ? '정원 제한 없음' : `정원 ${cap}명`}` })
@@ -71,19 +74,20 @@ export function publishChecks(offer: Offer, items: Item[], questions: Questions,
     checks.push({ level: 'ok', text: `가격표 · ${items.length}개 항목, ${seats.toLocaleString('ko-KR')}석` })
   }
   const broken = questions.fields.filter(f => !f.label.trim() || ((f.type === 'select' || f.type === 'multi') && f.options.filter(Boolean).length < 2))
-  if (broken.length > 0) checks.push({ level: 'error', text: '이름이 비었거나 선택지가 2개보다 적은 입력 항목이 있습니다 · 3단계' })
+  if (broken.length > 0) checks.push({ level: 'error', text: '이름이 비었거나 선택지가 2개보다 적은 입력 항목이 있습니다 · 신청서 항목', step: 'questions' })
   else if (questions.identity === 'none') {
     checks.push({
       level: questions.fields.length ? 'ok' : 'error',
-      text: questions.fields.length ? `익명 응답 · 질문 ${questions.fields.length}개` : '익명 폼인데 질문이 하나도 없습니다 · 3단계',
+      text: questions.fields.length ? `익명 응답 · 질문 ${questions.fields.length}개` : '익명 폼인데 질문이 하나도 없습니다 · 신청서 항목',
+      step: questions.fields.length ? undefined : 'questions',
     })
   } else checks.push({ level: 'ok', text: `신청서 · 이름, 휴대폰${questions.fields.length ? ` 외 ${questions.fields.length}개 항목` : ''}` })
   if (isPaid(offer, items)) {
-    if (!offer.deposit.enabled && !offer.onsite) checks.push({ level: 'error', text: '결제 방법이 없습니다 · 5단계에서 무통장 입금이나 현장 결제를 켜 주세요' })
+    if (!offer.deposit.enabled && !offer.onsite) checks.push({ level: 'error', text: '결제 방법이 없습니다 · 결제·환불에서 무통장 입금이나 현장 결제를 켜 주세요', step: 'payment' })
     if (offer.deposit.enabled && (!offer.deposit.bank || !offer.deposit.account || !offer.deposit.holder)) {
-      checks.push({ level: 'error', text: '무통장 입금 계좌 정보가 비어 있습니다 · 5단계' })
+      checks.push({ level: 'error', text: '무통장 입금 계좌 정보가 비어 있습니다 · 결제·환불', step: 'payment' })
     }
-    if (offer.refundRules.length === 0) checks.push({ level: 'error', text: '취소·환불 규정이 없습니다 · 5단계' })
+    if (offer.refundRules.length === 0) checks.push({ level: 'error', text: '취소·환불 규정이 없습니다 · 결제·환불', step: 'payment' })
     else checks.push({ level: 'ok', text: '취소·환불 규정' })
     checks.push({ level: 'warn', text: '온라인 결제는 아직 연결되지 않았습니다 · 무통장 입금·현장 결제로 게시됩니다' })
   } else {
@@ -91,7 +95,7 @@ export function publishChecks(offer: Offer, items: Item[], questions: Questions,
   }
   if (offer.overflow === 'waitlist') checks.push({ level: 'ok', text: `대기 신청 · 자리가 나면 ${offer.claimHours}시간 안에 확정` })
   if (offer.openAt && offer.close.mode === 'at' && offer.close.at && offer.close.at <= offer.openAt) {
-    checks.push({ level: 'error', text: '신청 마감이 예약 오픈보다 빠릅니다 · 4단계' })
+    checks.push({ level: 'error', text: '신청 마감이 예약 오픈보다 빠릅니다 · 신청 규칙', step: 'rules' })
   }
   checks.push({ level: 'warn', text: '프로토타입: 알림톡·SMS는 실제로 보내지 않고 발송 기록에만 남깁니다' })
   return checks

@@ -542,7 +542,7 @@ export function StepQuestions({ s, update }: StepProps) {
         <input type="checkbox" checked={q.companions} disabled={s.offer.party.mode !== 'group'} onChange={e => setQ({ companions: e.target.checked })} />
         <span>
           함께 오는 분 이름도 받기
-          <small>{s.offer.party.mode === 'group' ? '인원 수만큼 이름 칸이 생깁니다. 명단과 입장 확인에 쓰입니다.' : '2단계에서 "대표자 + 동반자"를 고르면 켤 수 있습니다.'}</small>
+          <small>{s.offer.party.mode === 'group' ? '인원 수만큼 이름 칸이 생깁니다. 명단과 입장 확인에 쓰입니다.' : '\'가격과 정원\' 단계에서 "대표자 + 동반자"를 고르면 켤 수 있습니다.'}</small>
         </span>
       </label>
 
@@ -939,7 +939,7 @@ export function StepDesign({ s, update, onError }: StepProps) {
 
   function setMode(mode: FormMode) {
     if (mode === 'custom_html' && !canCustomHtml) {
-      onError('커스텀 HTML 모드는 1단계에서 "단순 신청" 구조를 골라야 쓸 수 있습니다.')
+      onError('커스텀 HTML 모드는 \'기본·방식\' 단계에서 "단순 신청" 구조를 골라야 쓸 수 있습니다.')
       return
     }
     onError(null)
@@ -963,7 +963,7 @@ export function StepDesign({ s, update, onError }: StepProps) {
         ? ` 파일 업로드 항목 ${result.droppedFileInputs}개는 아직 지원하지 않아 제외했습니다.`
         : ''
       setScanMsg(
-        `감지된 항목 ${result.fields!.length}개 (신규 ${result.added}, 삭제 ${result.removed}) · 3단계 '신청서 항목'에서 라벨과 필수 여부를 확인하세요.${dropped}`,
+        `감지된 항목 ${result.fields!.length}개 (신규 ${result.added}, 삭제 ${result.removed}) · '신청서 항목' 단계에서 라벨과 필수 여부를 확인하세요.${dropped}`,
       )
     })
   }
@@ -995,7 +995,7 @@ export function StepDesign({ s, update, onError }: StepProps) {
             <input type="radio" name="designMode" checked={s.mode === 'custom_html'} onChange={() => setMode('custom_html')} disabled={!canCustomHtml} />
             <span>
               커스텀 HTML · 직접 만든 화면을 그대로 붙여넣습니다
-              {!canCustomHtml && <small> (1단계에서 &apos;단순 신청&apos;으로 바꿔야 고를 수 있습니다)</small>}
+              {!canCustomHtml && <small> (&apos;기본·방식&apos; 단계에서 &apos;단순 신청&apos;으로 바꿔야 고를 수 있습니다)</small>}
             </span>
           </label>
         </div>

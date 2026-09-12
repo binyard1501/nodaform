@@ -53,7 +53,7 @@ export default async function Results(props: PageProps<'/admin/forms/[id]/result
 
       {form.questions.fields.length === 0 ? (
         <p className="status-card">
-          집계할 입력 항목이 없습니다. <Link href={`/admin/forms/${form.id}/wizard`}>3단계 &apos;신청서 항목&apos;</Link>에서 질문을 추가해 주세요.
+          집계할 입력 항목이 없습니다. <Link href={`/admin/forms/${form.id}/wizard`}>&apos;신청서 항목&apos; 단계</Link>에서 질문을 추가해 주세요.
         </p>
       ) : (
         <div className="stack" style={{ gap: 18 }}>
