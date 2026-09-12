@@ -33,6 +33,7 @@ export function Wizard({
     theme: initial.theme,
     mode: initial.mode,
     customHtml: initial.customHtml,
+    kind: initial.kind,
   })
   const [error, setError] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<string | null>(null)

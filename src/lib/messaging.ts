@@ -9,6 +9,8 @@ export async function sendMessage(
 ) {
   const rule = form.offer.messages.find(m => m.trigger === trigger)
   if (!rule || !rule.enabled) return
+  // Anonymous responses carry no phone number, so there is nobody to send to.
+  if (!app.phone) return
 
   let sendAt = now
   let status: 'sent' | 'scheduled' = 'sent'

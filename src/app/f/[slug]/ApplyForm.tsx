@@ -106,7 +106,9 @@ export function ApplyForm({
       ? `대기 ${item!.waitlisted + 1}번으로 신청하기`
       : amount > 0 && method === 'deposit'
         ? '신청하고 입금 안내 받기'
-        : '신청하기'
+        : questions.identity === 'none'
+          ? '응답 보내기'
+          : '신청하기'
 
   return (
     <form action={formAction} className="stack" style={{ gap: 26 }}>
@@ -228,18 +230,22 @@ export function ApplyForm({
       )}
       {tooMany && <p className="form-error">남은 자리가 {item!.remaining}석입니다. 인원을 줄이거나 다른 항목을 골라 주세요.</p>}
 
-      <div className="field">
-        <label className="label" htmlFor="name">
-          {party > 1 ? '대표자 이름' : '이름'}
-        </label>
-        <input id="name" name="name" className="input" autoComplete="name" required />
-      </div>
-      <div className="field">
-        <label className="label" htmlFor="phone">
-          휴대폰 번호 · 확정과 대기 알림을 받습니다
-        </label>
-        <input id="phone" name="phone" className="input" inputMode="numeric" autoComplete="tel" placeholder="010-0000-0000" required />
-      </div>
+      {questions.identity === 'required' && (
+        <>
+          <div className="field">
+            <label className="label" htmlFor="name">
+              {party > 1 ? '대표자 이름' : '이름'}
+            </label>
+            <input id="name" name="name" className="input" autoComplete="name" required />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="phone">
+              휴대폰 번호 · 확정과 대기 알림을 받습니다
+            </label>
+            <input id="phone" name="phone" className="input" inputMode="numeric" autoComplete="tel" placeholder="010-0000-0000" required />
+          </div>
+        </>
+      )}
       {questions.companions && party > 1 && (
         <fieldset className="stack" style={{ border: 0, padding: 0, margin: 0, gap: 8 }}>
           <legend className="label" style={{ marginBottom: 8 }}>

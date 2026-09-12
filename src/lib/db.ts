@@ -11,6 +11,7 @@ import {
   type Application,
   type Channel,
   type CustomHtml,
+  type FormKind,
   type FormMode,
   type FormRecord,
   type FormStatus,
@@ -117,6 +118,7 @@ create index if not exists forms_workspace on forms(workspace_id);
 create index if not exists sessions_expires on sessions(expires_at);
 alter table forms add column if not exists mode text not null default 'structured';
 alter table forms add column if not exists custom_html jsonb not null default '{"source":"paste","html":"","lastScannedAt":null}'::jsonb;
+alter table forms add column if not exists kind text not null default 'application';
 create table if not exists templates (
   id text primary key,
   workspace_id text references workspaces(id) on delete cascade,
@@ -209,6 +211,7 @@ export type FormRow = {
   theme: Theme
   mode: string
   custom_html: CustomHtml
+  kind: string
 }
 export type ItemRow = {
   id: string
@@ -264,6 +267,7 @@ export const mapForm = (r: FormRow): FormRecord => ({
   theme: normalizeTheme(r.theme),
   mode: r.mode === 'custom_html' ? 'custom_html' : ('structured' as FormMode),
   customHtml: normalizeCustomHtml(r.custom_html),
+  kind: r.kind === 'survey' ? 'survey' : ('application' as FormKind),
 })
 
 export const mapItem = (r: ItemRow): Item => ({

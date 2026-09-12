@@ -15,6 +15,7 @@ import {
   type CustomHtml,
   type FieldDef,
   type FieldType,
+  type FormKind,
   type FormMode,
   type FormStatus,
   type Item,
@@ -35,6 +36,7 @@ export type WizardState = {
   theme: Theme
   mode: FormMode
   customHtml: CustomHtml
+  kind: FormKind
 }
 
 export type StepProps = {
@@ -1163,8 +1165,12 @@ function summarize({ offer, items, questions }: WizardState) {
   }
   if (offer.close.mode === 'before_start') out.push(`각 항목은 시작 ${durationText(offer.close.minutes)} 전에 신청을 마감합니다.`)
   if (offer.close.mode === 'at' && offer.close.at) out.push(`${formatDateTime(offer.close.at)}에 신청을 마감합니다.`)
-  const labels = ['이름', '휴대폰', ...(questions.companions ? ['동반자 이름'] : []), ...questions.fields.map(f => f.label).filter(Boolean)]
-  out.push(`신청서 항목: ${labels.join(', ')}.${questions.marketing.enabled ? ' 마케팅 수신 동의는 선택으로 받습니다.' : ''}`)
+  if (questions.identity === 'none') {
+    out.push(`이름·연락처 없이 익명으로 받습니다. 질문: ${questions.fields.map(f => f.label).filter(Boolean).join(', ') || '(없음)'}.`)
+  } else {
+    const labels = ['이름', '휴대폰', ...(questions.companions ? ['동반자 이름'] : []), ...questions.fields.map(f => f.label).filter(Boolean)]
+    out.push(`신청서 항목: ${labels.join(', ')}.${questions.marketing.enabled ? ' 마케팅 수신 동의는 선택으로 받습니다.' : ''}`)
+  }
   if (paid) {
     const methods = [offer.deposit.enabled && `무통장 입금(${offer.deposit.deadlineHours}시간 안)`, offer.onsite && '현장 결제'].filter(Boolean)
     const rule = sortedRefundRules(offer.refundRules)[0]

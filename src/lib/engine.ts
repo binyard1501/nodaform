@@ -12,6 +12,7 @@ import {
   type Application,
   type CustomHtml,
   type FieldDef,
+  type FormKind,
   type FormMode,
   type FormRecord,
   type Item,
@@ -333,6 +334,19 @@ export async function lookupApplications(slug: string, name: string, phone: stri
   return rows.map(mapApp).map(a => ({ id: a.id, status: a.status, party: a.party, item: itemLabel(items.find(i => i.id === a.itemId)!) }))
 }
 
+// Deliberately available for application forms too, not just surveys — "60% of applicants heard
+// about us on Instagram" is event-operations information, not survey-only information.
+export async function getResults(workspaceId: string, formId: string) {
+  const d = await db()
+  const form = await loadOwnForm(d, workspaceId, formId)
+  if (!form) return null
+  const { rows } = await d.query<AppRow>(
+    `select * from applications where form_id = $1 and status not in ('canceled', 'expired') order by seq desc`,
+    [formId],
+  )
+  return { form, applications: rows.map(mapApp) }
+}
+
 export async function exportRows(workspaceId: string, formId: string) {
   const d = await db()
   const form = await loadOwnForm(d, workspaceId, formId)
@@ -355,7 +369,8 @@ export async function listCustomers(workspaceId: string): Promise<Customer[]> {
   const d = await db()
   const { rows } = await d.query<{ phone: string; name: string; marketing: boolean; created_at: Date; title: string; status: string }>(
     `select a.phone, a.name, a.marketing, a.created_at, f.title, a.status
-     from applications a join forms f on f.id = a.form_id where f.workspace_id = $1 order by a.created_at desc`,
+     from applications a join forms f on f.id = a.form_id
+     where f.workspace_id = $1 and a.phone <> '' order by a.created_at desc`,
     [workspaceId],
   )
   const map = new Map<string, Customer>()
@@ -454,10 +469,15 @@ export async function applyToForm(input: ApplyInput) {
     const item = mapItem(rows[0])
     if (isClosed(form.offer, item, now)) throw new UserError(`${itemLabel(item)} 신청이 마감되었습니다.`)
 
-    const name = input.name.trim()
-    const phone = digits(input.phone)
-    if (!name) throw new UserError('이름을 입력해 주세요.')
-    if (!/^01\d{8,9}$/.test(phone)) throw new UserError('휴대폰 번호를 010으로 시작하는 숫자로 입력해 주세요.')
+    // Anonymous forms (surveys) collect no identity, so there is nothing to validate, dedupe
+    // against, or notify. Duplicate responses are accepted — that is the cost of anonymity.
+    const anonymous = form.questions.identity === 'none'
+    const name = anonymous ? '' : input.name.trim()
+    const phone = anonymous ? '' : digits(input.phone)
+    if (!anonymous) {
+      if (!name) throw new UserError('이름을 입력해 주세요.')
+      if (!/^01\d{8,9}$/.test(phone)) throw new UserError('휴대폰 번호를 010으로 시작하는 숫자로 입력해 주세요.')
+    }
     const max = form.offer.party.mode === 'solo' ? 1 : form.offer.party.max
     const party = Math.trunc(input.party)
     if (party < 1 || party > max) throw new UserError(`한 번에 ${max}명까지 신청할 수 있습니다.`)
@@ -468,12 +488,14 @@ export async function applyToForm(input: ApplyInput) {
     }
     const answers = validateAnswers(form.questions, input.answers)
 
-    const { rows: dup } = await tx.query<{ n: number }>(
-      `select count(*)::int as n from applications where item_id = $1 and phone = $2 and status in ${ACTIVE}`,
-      [item.id, phone],
-    )
-    if (dup[0].n > 0) throw new UserError('이 번호로 같은 항목에 이미 신청하셨습니다.')
-    if (form.offer.limitPerPerson) {
+    if (!anonymous) {
+      const { rows: dup } = await tx.query<{ n: number }>(
+        `select count(*)::int as n from applications where item_id = $1 and phone = $2 and status in ${ACTIVE}`,
+        [item.id, phone],
+      )
+      if (dup[0].n > 0) throw new UserError('이 번호로 같은 항목에 이미 신청하셨습니다.')
+    }
+    if (!anonymous && form.offer.limitPerPerson) {
       const { rows: mine } = await tx.query<{ n: number }>(
         `select count(*)::int as n from applications where form_id = $1 and phone = $2 and status in ${ACTIVE}`,
         [form.id, phone],
@@ -698,13 +720,39 @@ export async function shiftClock(workspaceId: string, ms: number | null) {
 
 /* ---------- wizard ---------- */
 
-export async function createDraft(workspaceId: string) {
+// A survey is not a separate engine path — it is a draft pre-set to the combination that makes
+// one: single item, free, no capacity, anonymous. Everything after this is the ordinary wizard.
+export async function createDraft(workspaceId: string, kind: FormKind = 'application') {
   const d = await db()
   const id = randomUUID()
+  const offer = defaultOffer()
+  const questions = defaultQuestions()
+  if (kind === 'survey') {
+    offer.structure = 'simple'
+    offer.free = true
+    offer.overflow = 'close'
+    offer.close = { mode: 'none', minutes: 60, at: null }
+    offer.party = { mode: 'solo', max: 1 }
+    offer.limitPerPerson = null
+    offer.messages = offer.messages.map(m => ({ ...m, enabled: false }))
+    questions.identity = 'none'
+  }
   await d.query(
-    `insert into forms (id, workspace_id, slug, title, status, offer, questions, theme) values ($1, $2, $3, $4, 'draft', $5::jsonb, $6::jsonb, $7::jsonb)`,
-    [id, workspaceId, `form-${id.slice(0, 6)}`, '새 신청 폼', JSON.stringify(defaultOffer()), JSON.stringify(defaultQuestions()), JSON.stringify(defaultTheme())],
+    `insert into forms (id, workspace_id, slug, title, status, offer, questions, theme, kind) values ($1, $2, $3, $4, 'draft', $5::jsonb, $6::jsonb, $7::jsonb, $8)`,
+    [
+      id,
+      workspaceId,
+      `${kind === 'survey' ? 'survey' : 'form'}-${id.slice(0, 6)}`,
+      kind === 'survey' ? '새 설문' : '새 신청 폼',
+      JSON.stringify(offer),
+      JSON.stringify(questions),
+      JSON.stringify(defaultTheme()),
+      kind,
+    ],
   )
+  if (kind === 'survey') {
+    await d.query(`insert into items (id, form_id, label, price, capacity, position) values ($1, $2, '응답', 0, null, 0)`, [randomUUID(), id])
+  }
   return id
 }
 
@@ -715,8 +763,8 @@ export async function duplicateForm(workspaceId: string, formId: string) {
     if (!form) throw new UserError('폼을 찾을 수 없습니다.')
     const id = randomUUID()
     await tx.query(
-      `insert into forms (id, workspace_id, slug, title, description, status, offer, questions, theme, mode, custom_html)
-       values ($1, $2, $3, $4, $5, 'draft', $6::jsonb, $7::jsonb, $8::jsonb, $9, $10::jsonb)`,
+      `insert into forms (id, workspace_id, slug, title, description, status, offer, questions, theme, mode, custom_html, kind)
+       values ($1, $2, $3, $4, $5, 'draft', $6::jsonb, $7::jsonb, $8::jsonb, $9, $10::jsonb, $11)`,
       [
         id,
         workspaceId,
@@ -728,6 +776,7 @@ export async function duplicateForm(workspaceId: string, formId: string) {
         JSON.stringify(form.theme),
         form.mode,
         JSON.stringify(form.customHtml),
+        form.kind,
       ],
     )
     for (const item of await loadItems(tx, formId)) {
@@ -750,6 +799,7 @@ export type WizardPayload = {
   theme: Theme
   mode: FormMode
   customHtml: CustomHtml
+  kind: FormKind
 }
 
 const FIELD_TYPES = new Set(['text', 'textarea', 'email', 'select', 'multi', 'consent'])
@@ -762,7 +812,12 @@ function cleanQuestions(q: Questions): Questions {
     seen.add(f.id)
     fields.push({ ...f, label: f.label.trim().slice(0, 100), help: (f.help ?? '').trim().slice(0, 200), options: (f.options ?? []).map(o => o.trim()).filter(Boolean) })
   }
-  return { fields, companions: !!q.companions, marketing: { enabled: !!q.marketing.enabled, text: q.marketing.text.trim() || '소식을 문자로 받겠습니다 (선택)' } }
+  return {
+    fields,
+    companions: !!q.companions,
+    marketing: { enabled: !!q.marketing.enabled, text: q.marketing.text.trim() || '소식을 문자로 받겠습니다 (선택)' },
+    identity: q.identity === 'none' ? 'none' : 'required',
+  }
 }
 
 function cleanTheme(t: Theme): Theme {
@@ -833,7 +888,7 @@ export async function saveForm(workspaceId: string, formId: string, p: WizardPay
 
     await tx.query(
       `update forms set title = $2, slug = $3, description = $4, offer = $5::jsonb, questions = $6::jsonb, theme = $7::jsonb,
-         mode = $8, custom_html = $9::jsonb where id = $1`,
+         mode = $8, custom_html = $9::jsonb, kind = $10 where id = $1`,
       [
         formId,
         title,
@@ -844,6 +899,7 @@ export async function saveForm(workspaceId: string, formId: string, p: WizardPay
         JSON.stringify(cleanTheme(p.theme)),
         p.mode === 'custom_html' ? 'custom_html' : 'structured',
         JSON.stringify(cleanCustomHtml(p.customHtml)),
+        p.kind === 'survey' ? 'survey' : 'application',
       ],
     )
     await reconcile(tx, (await loadForm(tx, formId))!, now)

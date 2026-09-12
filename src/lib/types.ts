@@ -34,11 +34,19 @@ export type Offer = {
 
 export type FieldType = 'text' | 'textarea' | 'email' | 'select' | 'multi' | 'consent'
 export type FieldDef = { id: string; type: FieldType; label: string; required: boolean; options: string[]; help: string }
+// 'none' makes a form anonymous: no name/phone asked, no dedup, no notifications, and the
+// responses stay out of the customer DB. It's the single axis the engine branches on for surveys.
+export type Identity = 'required' | 'none'
 export type Questions = {
   fields: FieldDef[]
   companions: boolean
   marketing: { enabled: boolean; text: string }
+  identity: Identity
 }
+
+// Presentation only — which wording and wizard steps to show. The engine never reads this; what a
+// form actually does is decided by structure / free / identity, so odd combinations still work.
+export type FormKind = 'application' | 'survey'
 export type Theme = { color: string; logo: string | null; cover: string | null }
 export type Answer = string | string[] | boolean
 export type Answers = Record<string, Answer>
@@ -71,6 +79,7 @@ export type FormRecord = {
   theme: Theme
   mode: FormMode
   customHtml: CustomHtml
+  kind: FormKind
 }
 
 export type ItemStats = Item & {
@@ -196,7 +205,7 @@ export function defaultOffer(): Offer {
 }
 
 export function defaultQuestions(): Questions {
-  return { fields: [], companions: false, marketing: { enabled: false, text: '신상품·이벤트 소식을 문자로 받겠습니다 (선택)' } }
+  return { fields: [], companions: false, marketing: { enabled: false, text: '신상품·이벤트 소식을 문자로 받겠습니다 (선택)' }, identity: 'required' }
 }
 
 export function defaultTheme(): Theme {
@@ -222,6 +231,7 @@ export function normalizeQuestions(raw: Partial<Questions> | null | undefined): 
     fields: raw?.fields ?? base.fields,
     companions: raw?.companions ?? base.companions,
     marketing: { ...base.marketing, ...(raw?.marketing ?? {}) },
+    identity: raw?.identity === 'none' ? 'none' : 'required',
   }
 }
 

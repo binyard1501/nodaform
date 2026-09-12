@@ -41,6 +41,7 @@ const POPUP_QUESTIONS: Questions = {
   ],
   companions: true,
   marketing: { enabled: true, text: '브랜드 신제품·팝업 소식을 문자로 받겠습니다 (선택)' },
+  identity: 'required',
 }
 const POPUP_THEME: Theme = { color: '#7a3e9d', logo: null, cover: null }
 
@@ -54,6 +55,7 @@ const SEMINAR_QUESTIONS: Questions = {
   ],
   companions: false,
   marketing: { enabled: false, text: defaultQuestions().marketing.text },
+  identity: 'required',
 }
 const SEMINAR_THEME: Theme = { color: '#1f3a8a', logo: null, cover: null }
 
@@ -262,6 +264,7 @@ async function seedBriefing(q: Q, workspaceId: string, slug: string) {
       fields: [f('org', 'text', '소속', false), f('question', 'textarea', '미리 궁금한 점', false, [], '설명회에서 먼저 답해 드립니다')],
       companions: false,
       marketing: { enabled: true, text: 'NODA. 소식과 다음 설명회 일정을 문자로 받겠습니다 (선택)' },
+      identity: 'required',
     },
     theme: defaultTheme(),
   })
@@ -276,6 +279,7 @@ const POTTERY_QUESTIONS: Questions = {
   ],
   companions: true,
   marketing: { enabled: true, text: '다음 클래스 일정을 문자로 받겠습니다 (선택)' },
+  identity: 'required',
 }
 
 const potteryExtra: Extra = (n, party) => ({

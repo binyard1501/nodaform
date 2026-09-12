@@ -7,7 +7,7 @@ import * as engine from '@/lib/engine'
 import { countFileInputs, mergeScannedFields, scanCustomHtmlFields } from '@/lib/htmlScan'
 import { sanitizeFormHtml } from '@/lib/sanitizeHtml'
 import * as templates from '@/lib/templates'
-import type { FieldDef, Method } from '@/lib/types'
+import type { FieldDef, FormKind, Method } from '@/lib/types'
 
 export type ActionResult = { error?: string; message?: string }
 
@@ -54,9 +54,9 @@ export async function logoutAction() {
 
 /* ---------- operator actions (workspace-scoped) ---------- */
 
-export async function createDraftAction() {
+export async function createDraftAction(kind: FormKind = 'application') {
   const workspaceId = await auth.requireWorkspaceId()
-  const id = await engine.createDraft(workspaceId)
+  const id = await engine.createDraft(workspaceId, kind)
   redirect(`/admin/forms/${id}/wizard`)
 }
 

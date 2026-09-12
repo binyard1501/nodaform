@@ -18,13 +18,20 @@ export default async function AdminHome() {
         <div className="spread">
           <div className="stack" style={{ gap: 4 }}>
             <h1>신청 폼</h1>
-            <p className="muted">폼마다 신청서, 정원, 대기자, 자동 알림, 신청 화면 디자인을 따로 설정합니다.</p>
+            <p className="muted">폼마다 신청서, 정원, 대기자, 자동 알림, 신청 화면 디자인을 따로 설정합니다. 설문은 정원·결제 없이 익명으로 응답을 모읍니다.</p>
           </div>
-          <form action={createDraftAction}>
-            <button type="submit" className="btn btn-primary">
-              새 폼 만들기
-            </button>
-          </form>
+          <div className="row">
+            <form action={createDraftAction.bind(null, 'survey')}>
+              <button type="submit" className="btn">
+                새 설문 만들기
+              </button>
+            </form>
+            <form action={createDraftAction.bind(null, 'application')}>
+              <button type="submit" className="btn btn-primary">
+                새 폼 만들기
+              </button>
+            </form>
+          </div>
         </div>
       </div>
 
@@ -40,6 +47,7 @@ export default async function AdminHome() {
                     {f.title}
                   </Link>
                   <span className={`pill fs-${f.status}`}>{FORM_STATUS[f.status]}</span>
+                  {f.kind === 'survey' && <span className="pill pill-info">설문</span>}
                 </div>
                 <div className="meta">
                   <span>
@@ -63,8 +71,11 @@ export default async function AdminHome() {
                 </div>
               </div>
               <div className="row">
+                <Link className="btn btn-sm" href={`/admin/forms/${f.id}/results`}>
+                  응답 집계
+                </Link>
                 <Link className="btn btn-sm" href={`/admin/forms/${f.id}/wizard`}>
-                  판매 설정
+                  {f.kind === 'survey' ? '설문 설정' : '판매 설정'}
                 </Link>
                 {f.status !== 'draft' && (
                   <Link className="btn btn-sm btn-ghost" href={`/f/${f.slug}`} target="_blank">

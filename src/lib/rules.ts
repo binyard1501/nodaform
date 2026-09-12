@@ -72,7 +72,12 @@ export function publishChecks(offer: Offer, items: Item[], questions: Questions,
   }
   const broken = questions.fields.filter(f => !f.label.trim() || ((f.type === 'select' || f.type === 'multi') && f.options.filter(Boolean).length < 2))
   if (broken.length > 0) checks.push({ level: 'error', text: '이름이 비었거나 선택지가 2개보다 적은 입력 항목이 있습니다 · 3단계' })
-  else checks.push({ level: 'ok', text: `신청서 · 이름, 휴대폰${questions.fields.length ? ` 외 ${questions.fields.length}개 항목` : ''}` })
+  else if (questions.identity === 'none') {
+    checks.push({
+      level: questions.fields.length ? 'ok' : 'error',
+      text: questions.fields.length ? `익명 응답 · 질문 ${questions.fields.length}개` : '익명 폼인데 질문이 하나도 없습니다 · 3단계',
+    })
+  } else checks.push({ level: 'ok', text: `신청서 · 이름, 휴대폰${questions.fields.length ? ` 외 ${questions.fields.length}개 항목` : ''}` })
   if (isPaid(offer, items)) {
     if (!offer.deposit.enabled && !offer.onsite) checks.push({ level: 'error', text: '결제 방법이 없습니다 · 5단계에서 무통장 입금이나 현장 결제를 켜 주세요' })
     if (offer.deposit.enabled && (!offer.deposit.bank || !offer.deposit.account || !offer.deposit.holder)) {

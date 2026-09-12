@@ -419,3 +419,17 @@ details.manual[open] > summary, details.change[open] > summary { border-bottom: 
 .day-strip .day.full span { color: var(--wait); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.result-card { padding: 16px 18px; display: grid; gap: 12px; }
+.result-bars { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.result-bars li { display: grid; grid-template-columns: minmax(80px, 170px) minmax(0, 1fr) auto; gap: 12px; align-items: center; font-size: 13.5px; }
+.result-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result-track { height: 10px; border-radius: 5px; background: var(--sunk); overflow: hidden; }
+.result-track i { display: block; height: 100%; background: var(--accent); }
+.result-num { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.result-texts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.result-texts li { background: var(--sunk); border-radius: 6px; padding: 7px 11px; font-size: 13px; }
+@media (max-width: 620px) {
+  .result-bars li { grid-template-columns: minmax(0, 1fr) auto; }
+  .result-track { display: none; }
+}
