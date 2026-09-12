@@ -68,6 +68,14 @@ export function scanCustomHtmlFields(html: string): FieldDef[] {
   return fields
 }
 
+// Counted on the raw HTML, before sanitizeFormHtml strips these, so the operator can be told why
+// their upload field disappeared instead of just not seeing it in the scan results.
+export function countFileInputs(html: string): number {
+  return parse(html)
+    .querySelectorAll('input')
+    .filter(el => (el.getAttribute('type') ?? '').toLowerCase() === 'file').length
+}
+
 // Merges freshly scanned fields into the operator's existing field list: a field already present
 // (by id) keeps its current label/required/options (the operator may have already edited them in
 // the wizard), a newly scanned field is appended, and a field no longer in the scan is dropped —

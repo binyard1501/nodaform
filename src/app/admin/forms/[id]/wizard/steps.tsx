@@ -957,7 +957,12 @@ export function StepDesign({ s, update, onError }: StepProps) {
         questions: { ...s.questions, fields: result.fields! },
         customHtml: { ...s.customHtml, lastScannedAt: new Date().toISOString() },
       })
-      setScanMsg(`감지된 항목 ${result.fields!.length}개 (신규 ${result.added}, 삭제 ${result.removed}) · 3단계 '신청서 항목'에서 라벨과 필수 여부를 확인하세요.`)
+      const dropped = result.droppedFileInputs
+        ? ` 파일 업로드 항목 ${result.droppedFileInputs}개는 아직 지원하지 않아 제외했습니다.`
+        : ''
+      setScanMsg(
+        `감지된 항목 ${result.fields!.length}개 (신규 ${result.added}, 삭제 ${result.removed}) · 3단계 '신청서 항목'에서 라벨과 필수 여부를 확인하세요.${dropped}`,
+      )
     })
   }
 

@@ -32,6 +32,10 @@ export function sanitizeFormHtml(html: string): string {
     allowedAttributes: ALLOWED_ATTRIBUTES,
     allowedSchemes: ['http', 'https', 'mailto'],
     allowVulnerableTags: false,
+    // File inputs are dropped entirely rather than downgraded to text: applyAction stringifies
+    // every f_ value, so a surviving file field would silently store "[object File]" instead of
+    // an upload. Removing it makes the gap visible to the operator at scan time.
+    exclusiveFilter: frame => frame.tag === 'input' && (frame.attribs?.type ?? '').toLowerCase() === 'file',
     // Only <input type="image"> or <button> can act like a submit control among disallowed tags;
     // dropping <script>/<iframe>/<object>/<form> entirely (not just unwrapping) keeps their text
     // content out of the page too.

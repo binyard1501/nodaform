@@ -4,7 +4,7 @@ import { refresh } from 'next/cache'
 import { redirect } from 'next/navigation'
 import * as auth from '@/lib/auth'
 import * as engine from '@/lib/engine'
-import { mergeScannedFields, scanCustomHtmlFields } from '@/lib/htmlScan'
+import { countFileInputs, mergeScannedFields, scanCustomHtmlFields } from '@/lib/htmlScan'
 import { sanitizeFormHtml } from '@/lib/sanitizeHtml'
 import * as templates from '@/lib/templates'
 import type { FieldDef, Method } from '@/lib/types'
@@ -76,18 +76,28 @@ export async function saveWizardAction(formId: string, payload: engine.WizardPay
   }
 }
 
-export type ScanResult = ActionResult & { fields?: FieldDef[]; added?: number; removed?: number }
+export type ScanResult = ActionResult & { fields?: FieldDef[]; added?: number; removed?: number; droppedFileInputs?: number }
+
+const FILE_INPUT_NOTE = '파일 업로드 항목(type="file")은 아직 지원하지 않아 제외했습니다.'
 
 // Pure text transform (sanitize + parse) — no DB access, so this only needs to confirm the
 // caller is a signed-in operator, not which workspace they're in.
 export async function scanCustomHtmlAction(html: string, existingFields: FieldDef[]): Promise<ScanResult> {
   try {
     await auth.requireWorkspaceId()
+    // Counted before sanitizing, which is what removes them.
+    const droppedFileInputs = countFileInputs(html)
     const clean = sanitizeFormHtml(html)
     const scanned = scanCustomHtmlFields(clean)
-    if (scanned.length === 0) return { error: 'f_ 로 시작하는 입력 항목을 찾지 못했습니다. name="f_항목id" 형식인지 확인해 주세요.' }
+    if (scanned.length === 0) {
+      return {
+        error: droppedFileInputs
+          ? `${FILE_INPUT_NOTE} 나머지 입력 항목도 찾지 못했습니다 — name="f_항목id" 형식인지 확인해 주세요.`
+          : 'f_ 로 시작하는 입력 항목을 찾지 못했습니다. name="f_항목id" 형식인지 확인해 주세요.',
+      }
+    }
     const { fields, added, removed } = mergeScannedFields(existingFields, scanned)
-    return { fields, added, removed }
+    return { fields, added, removed, droppedFileInputs }
   } catch (e) {
     return fail(e)
   }
