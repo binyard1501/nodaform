@@ -1,6 +1,5 @@
-import type { PGlite } from '@electric-sql/pglite'
 import { randomUUID } from 'node:crypto'
-import { mapApp, mapForm, type AppRow, type FormRow, type Q } from './db'
+import { mapApp, mapForm, type AppRow, type Db, type FormRow, type Q } from './db'
 import { kstIso } from './format'
 import { sendMessage } from './messaging'
 import {
@@ -353,7 +352,7 @@ function exampleSlug(workspaceId: string, baseSlug: string) {
 
 // Seeds a new workspace with the example forms, and (for the legacy no-auth prototype data
 // that predates workspaces) gives already-seeded examples their settings if still missing.
-export async function ensureExamples(d: PGlite, workspaceId: string) {
+export async function ensureExamples(d: Db, workspaceId: string) {
   await d.transaction(async tx => {
     for (const ex of EXAMPLES) {
       const slug = exampleSlug(workspaceId, ex.baseSlug)

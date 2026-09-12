@@ -1,4 +1,3 @@
-import { PGlite } from '@electric-sql/pglite'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import { ensureBuiltinTemplates } from './builtinTemplates'
@@ -25,6 +24,8 @@ import {
 } from './types'
 
 export type Q = { query<T>(sql: string, params?: unknown[]): Promise<{ rows: T[] }> }
+// Everything above the driver talks to Q; only transaction boundaries need the wider type.
+export type Db = Q & { transaction<T>(fn: (tx: Q) => Promise<T>): Promise<T> }
 
 const SCHEMA = `
 create table if not exists settings (key text primary key, value text not null);
@@ -136,20 +137,56 @@ create index if not exists templates_visibility on templates(visibility);
 create index if not exists templates_workspace on templates(workspace_id);
 `
 
-const g = globalThis as unknown as { __nodaDb?: Promise<PGlite> }
+const g = globalThis as unknown as { __nodaDb?: Promise<Db> }
 
-async function open() {
-  const dir = path.join(process.cwd(), '.data', 'pglite')
-  mkdirSync(dir, { recursive: true })
-  const db = new PGlite(dir)
-  await db.exec(SCHEMA)
+// Managed Postgres (Supabase) when DATABASE_URL is set, embedded PGlite otherwise. Both drivers
+// are loaded lazily so a deployment only pulls in the one it uses.
+async function openPostgres(connectionString: string): Promise<Db> {
+  const { Pool } = await import('pg')
+  const pool = new Pool({
+    connectionString,
+    // Supabase's pooler terminates idle connections; keeping the local pool small and short-lived
+    // avoids handing out sockets it has already dropped.
+    max: Number(process.env.DATABASE_POOL_MAX ?? 5),
+    idleTimeoutMillis: 10_000,
+    ssl: connectionString.includes('localhost') || connectionString.includes('127.0.0.1') ? undefined : { rejectUnauthorized: true },
+  })
+  const db: Db = {
+    query: (sql, params) => pool.query(sql, params as unknown[]).then(r => ({ rows: r.rows })),
+    async transaction(fn) {
+      const client = await pool.connect()
+      try {
+        await client.query('begin')
+        const out = await fn({ query: (sql, params) => client.query(sql, params as unknown[]).then(r => ({ rows: r.rows })) })
+        await client.query('commit')
+        return out
+      } catch (e) {
+        await client.query('rollback')
+        throw e
+      } finally {
+        client.release()
+      }
+    },
+  }
+  await db.query(SCHEMA)
   await ensureBuiltinTemplates(db)
   return db
 }
 
-// One PGlite instance per process: two instances on the same data dir corrupt it.
-export function rawDb() {
-  return (g.__nodaDb ??= open())
+async function openPglite(): Promise<Db> {
+  const { PGlite } = await import('@electric-sql/pglite')
+  const dir = path.join(process.cwd(), '.data', 'pglite')
+  mkdirSync(dir, { recursive: true })
+  const pglite = new PGlite(dir)
+  await pglite.exec(SCHEMA)
+  await ensureBuiltinTemplates(pglite)
+  return pglite
+}
+
+// One instance per process: two PGlite instances on the same data dir corrupt it, and a second
+// pg Pool would just double the connection count against the same database.
+export function rawDb(): Promise<Db> {
+  return (g.__nodaDb ??= process.env.DATABASE_URL ? openPostgres(process.env.DATABASE_URL) : openPglite())
 }
 
 export async function getClock(q: Q, workspaceId: string) {

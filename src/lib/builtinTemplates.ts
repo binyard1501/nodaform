@@ -1,4 +1,4 @@
-import type { PGlite } from '@electric-sql/pglite'
+import type { Q } from './db'
 import { sanitizeFormHtml } from './sanitizeHtml'
 
 // Built-in templates ship as plain inline-styled HTML (no <style> block — sanitizeFormHtml strips
@@ -134,7 +134,7 @@ const TEMPLATES: { id: string; name: string; html: string }[] = [
   },
 ]
 
-export async function ensureBuiltinTemplates(db: PGlite) {
+export async function ensureBuiltinTemplates(db: Q) {
   for (const t of TEMPLATES) {
     const { rows } = await db.query<{ n: number }>(`select count(*)::int as n from templates where id = $1`, [t.id])
     if ((rows[0] as { n: number }).n > 0) continue

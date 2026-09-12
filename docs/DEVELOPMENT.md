@@ -1,6 +1,6 @@
 # 노다(nodaform) 개발 문서
 
-마지막 갱신: 2026-09-12 (인프라 확정: Supabase 서울)
+마지막 갱신: 2026-09-12 (Postgres 드라이버 추상화 완료)
 
 이 문서는 지금까지 구현된 것, 왜 그렇게 만들었는지, 그리고 앞으로 해야 할 일을 정리합니다. 새 세션에서 이어서 작업할 때 이 문서부터 읽으면 맥락을 다시 설명할 필요가 없도록 관리합니다.
 
@@ -12,8 +12,13 @@
 
 - Next.js 16 (App Router, Server Actions, Turbopack)
 - React 19
-- PGlite(임베디드 Postgres, 프로세스당 싱글턴, `.data/pglite`에 파일로 저장 — gitignore됨)
+- **Postgres 2-드라이버 구성** — `DATABASE_URL`이 있으면 `pg`(node-postgres)로 관리형 Postgres(Supabase), 없으면 PGlite(임베디드, `.data/pglite`에 파일 저장, gitignore됨). 드라이버는 둘 다 동적 import라 쓰는 쪽만 번들에 들어간다
 - 별도 ORM 없이 raw SQL
+
+```bash
+npm run dev                                         # PGlite (설정 불필요, 로컬 개발 기본값)
+DATABASE_URL="postgresql://..." npm run dev         # 관리형 Postgres
+```
 
 ## 아키텍처 개요
 
@@ -112,7 +117,25 @@ NODA.는 고객 브랜드 뒤에서 도는 인프라이므로 **브랜드가 튀
 
 ## 인프라 · 파일 업로드
 
-### 결론: Supabase 서울 리전 (DB + Storage), 코드 적용은 미착수
+### 이전 진행 상황 (2026-09-12)
+
+**1단계 — 드라이버 추상화: 완료.** `db.ts`가 `DATABASE_URL` 유무로 드라이버를 고른다. `Q`(query만) 위에 `Db`(= `Q` + `transaction`)를 두고, `engine.ts`/`seed.ts`처럼 트랜잭션이 필요한 쪽만 `Db`를 받는다. **`engine.ts`·`auth.ts`·`templates.ts`의 쿼리 코드는 한 줄도 바뀌지 않았다** — 이식성 규칙을 지킨 덕분이다.
+
+실제 Postgres 16을 띄워 검증한 것:
+- 멀티 스테이트먼트 `SCHEMA` 실행 → 11개 테이블 생성
+- 가입 + 워크스페이스별 예시 시딩(폼 4, 항목 59, 신청 111, 메시지 210, 기본 템플릿 5)
+- 공개 신청 제출 — `applyToForm`의 긴 트랜잭션이 신청과 알림을 같이 커밋
+- JSONB(`answers`)·`timestamptz` 왕복 정상
+- **정수 집계가 문자열로 새지 않음** — `count(*)::int`/`sum(...)::int` 캐스팅 덕에 "확정 27 / 80석"이 숫자로 렌더링된다(캐스팅이 없었다면 pg가 bigint를 문자열로 돌려줘 깨졌을 지점)
+- 에러 경로에서 부분 저장 없음(중복 신청 시도 → 0행)
+- 운영자 쓰기 경로(`withApp` → 입금 확인) 정상
+- 드라이버 제거 후 PGlite 기본 경로도 그대로 동작
+
+**남은 것**: 실제 Supabase 프로젝트 생성(서울 리전), 기존 PGlite 데이터 이관(`pg_dump` 불가 — PGlite는 파일 포맷이 달라서 앱을 통해 재시딩하거나 별도 덤프 스크립트 필요. 지금은 프로토타입 데이터뿐이라 버려도 무방), 테마 로고·커버 data URL → Storage 이관, 배포.
+
+**SSL 주의**: 원격 호스트에는 `rejectUnauthorized: true`로 붙는다. Supabase 연결이 인증서 오류로 실패하면 pooler 엔드포인트를 쓰거나 CA 설정이 필요하다. 풀 크기는 `DATABASE_POOL_MAX`(기본 5)로 조정한다 — 서버리스에서는 Supabase pooler를 쓰고 작게 유지하는 게 맞다.
+
+### 결론: Supabase 서울 리전 (DB + Storage)
 
 **데이터 국내 보관**을 요건으로 잡았다. 아래 "누구의 정책인가" 참고 — 타겟이 협회·단체이고 첨부파일로 신분증·증명서가 들어올 수 있어, 고객에게 국외이전 절차를 강요하지 않는 쪽을 택했다. 비용 차이(월 $25 고정 vs Neon의 사용량 기반)는 그 요건을 확보하는 보험료로 본다.
 
@@ -281,7 +304,7 @@ answers[key.slice(2)] = ...
 
 1. ~~완전자유 HTML 모드 Phase 1~~ — 완료. Phase 2(GitHub 연동), Phase 3(rename 매핑)는 미착수
 2. ~~인프라 결정~~ — 완료. **Supabase 서울(DB + Storage)**. 위 "인프라 · 파일 업로드" 섹션 참고
-3. **PGlite → Supabase Postgres 이전** — 배포의 전제. 이식성 규칙(특히 "그냥 Postgres로만 쓰기")을 지키면서 옮긴다. 테마 로고·커버 data URL도 이때 Storage로 함께 이관
+3. **PGlite → Supabase Postgres 이전** — 드라이버 추상화는 완료(실제 Postgres로 검증). 남은 건 Supabase 프로젝트 생성·연결과 테마 이미지 Storage 이관
 4. 배포 (Vercel 서울 + Supabase 서울)
 5. 응답자 파일 업로드 — 3번 선행 필요. ~~`type="file"` 잠재 버그~~는 선제 처리 완료
 6. 요금제(무료/유료 경계) 설계 — 과금은 백엔드 사용량(제출 건수, SMS 발송량, **스토리지 용량**) 기준. 워크스페이스별 용량 한도 = 요금제 설계와 같은 문제. 보관 기간·자동 파기 정책이 비용과 개인정보 리스크를 동시에 좌우하므로 함께 정한다
