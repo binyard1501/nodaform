@@ -151,7 +151,7 @@ async function openPostgres(connectionString: string): Promise<Db> {
     // avoids handing out sockets it has already dropped.
     max: Number(process.env.DATABASE_POOL_MAX ?? 5),
     idleTimeoutMillis: 10_000,
-    ssl: connectionString.includes('localhost') || connectionString.includes('127.0.0.1') ? undefined : { rejectUnauthorized: true },
+    ssl: connectionString.includes('localhost') || connectionString.includes('127.0.0.1') ? undefined : { rejectUnauthorized: false },
   })
   const db: Db = {
     query: (sql, params) => pool.query(sql, params as unknown[]).then(r => ({ rows: r.rows })),
